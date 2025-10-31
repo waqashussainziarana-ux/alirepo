@@ -1,0 +1,5 @@
+{
+  "name": "Daily Transactions",
+  "description": "A web application to manage your daily business transactions, similar to Khatabook. Easily track credits and debits for customers and suppliers, view transaction histories, and manage balances.",
+  "requestFramePermissions": []
+}

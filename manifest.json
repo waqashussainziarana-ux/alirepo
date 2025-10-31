@@ -1,0 +1,22 @@
+{
+  "short_name": "Transactions",
+  "name": "Daily Transactions",
+  "description": "A web application to manage your daily business transactions, similar to Khatabook. Easily track credits and debits for customers and suppliers, view transaction histories, and manage balances.",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2563eb",
+  "background_color": "#f8fafc"
+}
