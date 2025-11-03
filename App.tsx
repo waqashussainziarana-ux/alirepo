@@ -9,6 +9,7 @@ import BottomNav from './components/BottomNav';
 import InstallBanner from './components/InstallBanner';
 import SettingsPage from './components/SettingsPage';
 import AuthPage from './components/AuthPage';
+import UpdateNotification from './components/UpdateNotification';
 
 type View = 'customers' | 'items' | 'settings';
 
@@ -25,6 +26,11 @@ const App: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState<boolean>(false);
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
+  
+  // State for PWA update notification
+  const [showUpdate, setShowUpdate] = useState(false);
+  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+
 
   // Load data when user logs in
   useEffect(() => {
@@ -67,18 +73,16 @@ const App: React.FC = () => {
     }
   }, [items, currentUser]);
   
+  // PWA Install & Update Logic
   useEffect(() => {
+    // Check if app is installed
     const mediaQuery = window.matchMedia('(display-mode: standalone)');
     setIsInstalled(mediaQuery.matches);
-
     const listener = (e: MediaQueryListEvent) => setIsInstalled(e.matches);
     mediaQuery.addEventListener('change', listener);
     
-    return () => mediaQuery.removeEventListener('change', listener);
-  }, []);
-
-  useEffect(() => {
-    const handler = (e: Event) => {
+    // Listen for install prompt
+    const beforeInstallHandler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
       const isBannerDismissed = localStorage.getItem('daily-transactions-install-banner-dismissed');
@@ -86,11 +90,42 @@ const App: React.FC = () => {
         setShowInstallBanner(true);
       }
     };
-    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('beforeinstallprompt', beforeInstallHandler);
+
+    // Service Worker registration and update handling
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').then(registration => {
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                setWaitingWorker(newWorker);
+                setShowUpdate(true);
+              }
+            });
+          }
+        });
+      }).catch(error => {
+        console.log('SW registration failed: ', error);
+      });
+    }
+
     return () => {
-      window.removeEventListener('beforeinstallprompt', handler);
+      mediaQuery.removeEventListener('change', listener);
+      window.removeEventListener('beforeinstallprompt', beforeInstallHandler);
     };
   }, [isInstalled]);
+
+  const handleUpdate = () => {
+    if (waitingWorker) {
+      // We don't need to post a message because the SW now uses skipWaiting().
+      // A simple reload will activate the new version.
+      setShowUpdate(false);
+      window.location.reload();
+    }
+  };
+
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {
@@ -293,6 +328,8 @@ const App: React.FC = () => {
             onDismiss={handleDismissInstallBanner}
           />
         )}
+        
+        <UpdateNotification show={showUpdate} onUpdate={handleUpdate} />
 
         {!selectedCustomer && <BottomNav activeView={activeView} setActiveView={setActiveView} />}
       </div>

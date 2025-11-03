@@ -1,4 +1,4 @@
-const CACHE_NAME = 'daily-transactions-cache-v4';
+const CACHE_NAME = 'daily-transactions-cache-v5';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -15,6 +15,7 @@ self.addEventListener('install', event => {
         console.log('Opened cache');
         return cache.addAll(urlsToCache);
       })
+      .then(() => self.skipWaiting()) // Activate new service worker immediately
   );
 });
 
@@ -79,6 +80,6 @@ self.addEventListener('activate', event => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim()) // Take control of all open clients
   );
 });
