@@ -248,7 +248,14 @@ const App: React.FC = () => {
       case 'items':
         return <ItemsList items={items} onAddItem={handleAddItem} onEditItem={handleEditItem} onDeleteItem={handleDeleteItem} onAddMultipleItems={handleAddMultipleItems} />;
       case 'settings':
-        return <SettingsPage onExport={handleExportData} onImport={handleImportData} onLogout={handleLogout} currentUser={currentUser} />;
+        return <SettingsPage 
+          onExport={handleExportData} 
+          onImport={handleImportData} 
+          onLogout={handleLogout} 
+          currentUser={currentUser} 
+          onInstallClick={handleInstallClick}
+          showInstallButton={!!deferredPrompt}
+        />;
       default:
         return <CustomerList customers={customers} onSelectCustomer={setSelectedCustomerId} onAddCustomer={handleAddCustomer} />;
     }
