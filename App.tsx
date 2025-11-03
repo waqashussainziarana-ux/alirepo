@@ -24,6 +24,7 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('customers');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState<boolean>(false);
+  const [isInstalled, setIsInstalled] = useState<boolean>(false);
 
   // Load data when user logs in
   useEffect(() => {
@@ -67,11 +68,21 @@ const App: React.FC = () => {
   }, [items, currentUser]);
   
   useEffect(() => {
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    setIsInstalled(mediaQuery.matches);
+
+    const listener = (e: MediaQueryListEvent) => setIsInstalled(e.matches);
+    mediaQuery.addEventListener('change', listener);
+    
+    return () => mediaQuery.removeEventListener('change', listener);
+  }, []);
+
+  useEffect(() => {
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
       const isBannerDismissed = localStorage.getItem('daily-transactions-install-banner-dismissed');
-      if (!isBannerDismissed) {
+      if (!isBannerDismissed && !isInstalled) {
         setShowInstallBanner(true);
       }
     };
@@ -79,7 +90,7 @@ const App: React.FC = () => {
     return () => {
       window.removeEventListener('beforeinstallprompt', handler);
     };
-  }, []);
+  }, [isInstalled]);
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {
@@ -254,7 +265,8 @@ const App: React.FC = () => {
           onLogout={handleLogout} 
           currentUser={currentUser} 
           onInstallClick={handleInstallClick}
-          showInstallButton={!!deferredPrompt}
+          isInstallable={!!deferredPrompt}
+          isInstalled={isInstalled}
         />;
       default:
         return <CustomerList customers={customers} onSelectCustomer={setSelectedCustomerId} onAddCustomer={handleAddCustomer} />;
@@ -268,14 +280,14 @@ const App: React.FC = () => {
           customerName={selectedCustomer?.name} 
           onBack={selectedCustomer ? handleBack : undefined}
           activeView={activeView}
-          showInstallButton={!!deferredPrompt && !selectedCustomer}
+          showInstallButton={!!deferredPrompt && !selectedCustomer && !isInstalled}
           onInstallClick={handleInstallClick}
         />
         <main className="p-4 pb-24">
           {renderContent()}
         </main>
         
-        {showInstallBanner && !selectedCustomer && activeView !== 'settings' && (
+        {showInstallBanner && !selectedCustomer && activeView !== 'settings' && !isInstalled && (
           <InstallBanner
             onInstall={handleInstallClick}
             onDismiss={handleDismissInstallBanner}

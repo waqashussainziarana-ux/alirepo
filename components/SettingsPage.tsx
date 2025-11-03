@@ -9,15 +9,64 @@ interface SettingsPageProps {
   onLogout: () => void;
   currentUser: string;
   onInstallClick: () => void;
-  showInstallButton: boolean;
+  isInstallable: boolean;
+  isInstalled: boolean;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ onExport, onImport, onLogout, currentUser, onInstallClick, showInstallButton }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ onExport, onImport, onLogout, currentUser, onInstallClick, isInstallable, isInstalled }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
   };
+
+  const renderInstallSection = () => {
+    // Check for iOS
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+
+    if (isInstalled) {
+      return (
+        <div className="bg-green-100 border border-green-200 p-4 rounded-lg text-center">
+            <p className="text-sm text-green-800 font-medium">Application is installed on this device.</p>
+        </div>
+      );
+    }
+    
+    if (isIOS) {
+        return (
+            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+                <p className="text-sm text-slate-700 mb-2 font-semibold">To install on your iPhone or iPad:</p>
+                <ol className="list-decimal list-inside text-sm text-slate-600 space-y-1">
+                    <li>Tap the <span className="font-bold">Share</span> button in Safari.</li>
+                    <li>Scroll down and tap <span className="font-bold">'Add to Home Screen'</span>.</li>
+                </ol>
+            </div>
+        );
+    }
+
+    return (
+      <>
+        <p className="text-sm text-slate-500 mb-4">
+          Install the app on your device for a better experience, including offline access and faster loading.
+        </p>
+        <button
+          onClick={onInstallClick}
+          disabled={!isInstallable}
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-blue-100 text-primary font-bold rounded-lg hover:bg-blue-200 transition-colors disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed"
+          aria-label="Install App"
+        >
+          <DownloadIcon className="w-6 h-6" />
+          <span>Install App</span>
+        </button>
+        {!isInstallable && (
+          <p className="text-xs text-slate-400 mt-2 text-center">
+            Installation becomes available after you use the app for a bit. If the button remains disabled, your browser may not support PWA installation.
+          </p>
+        )}
+      </>
+    );
+  };
+
 
   return (
     <div className="space-y-8">
@@ -36,22 +85,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onExport, onImport, onLogou
           </button>
         </div>
       </div>
-
-      {showInstallButton && (
-        <div>
-          <h2 className="text-lg font-semibold text-slate-700 mb-2">Application</h2>
-          <p className="text-sm text-slate-500 mb-4">
-            Install the app on your device for a better experience, including offline access and faster loading.
-          </p>
-          <button
-            onClick={onInstallClick}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-blue-100 text-primary font-bold rounded-lg hover:bg-blue-200 transition-colors"
-          >
-            <DownloadIcon className="w-6 h-6" />
-            <span>Install App</span>
-          </button>
-        </div>
-      )}
+      
+      <div>
+        <h2 className="text-lg font-semibold text-slate-700 mb-2">Application</h2>
+        {renderInstallSection()}
+      </div>
 
       <div>
         <h2 className="text-lg font-semibold text-slate-700 mb-2">Data Management</h2>
