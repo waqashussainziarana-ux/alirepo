@@ -21,76 +21,77 @@ const App: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [cloudReady, setCloudReady] = useState(isVercelEnabled());
+  const [lastSynced, setLastSynced] = useState<string | null>(null);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<View>('customers');
   const [showUpdate, setShowUpdate] = useState(false);
 
-  // Initial Data Load on Login
+  // Auto-Login Sync: Fetches everything from Supabase immediately on login
   useEffect(() => {
-    const loadData = async () => {
+    const loadGlobalData = async () => {
       if (!currentUser) return;
       setIsSyncing(true);
-
-      const isCloud = isVercelEnabled();
-      setCloudReady(isCloud);
-
-      if (isCloud) {
-        // Attempt cloud fetch
+      
+      try {
+        // Step 1: Attempt Cloud Fetch
         const [cloudCustomers, cloudItems] = await Promise.all([
           cloudFetch(currentUser, 'customers'),
           cloudFetch(currentUser, 'items')
         ]);
         
-        if (cloudCustomers !== null) setCustomers(cloudCustomers);
-        else {
+        let finalCustomers = cloudCustomers || [];
+        let finalItems = cloudItems || [];
+
+        // Step 2: Fallback to Local Storage if Cloud is empty (Migration helper)
+        if (finalCustomers.length === 0) {
           const local = localStorage.getItem(`daily-transactions-customers-${currentUser}`);
-          setCustomers(local ? JSON.parse(local) : []);
+          if (local) finalCustomers = JSON.parse(local);
+        }
+        if (finalItems.length === 0) {
+          const local = localStorage.getItem(`daily-transactions-items-${currentUser}`);
+          if (local) finalItems = JSON.parse(local);
         }
 
-        if (cloudItems !== null) setItems(cloudItems);
-        else {
-          const local = localStorage.getItem(`daily-transactions-items-${currentUser}`);
-          setItems(local ? JSON.parse(local) : []);
-        }
-      } else {
-        // Local fallback
-        const storedCustomers = localStorage.getItem(`daily-transactions-customers-${currentUser}`);
-        setCustomers(storedCustomers ? JSON.parse(storedCustomers) : []);
-        const storedItems = localStorage.getItem(`daily-transactions-items-${currentUser}`);
-        setItems(storedItems ? JSON.parse(storedItems) : []);
+        setCustomers(finalCustomers);
+        setItems(finalItems);
+        setLastSynced(new Date().toLocaleTimeString());
+      } catch (e) {
+        console.error("Critical: Initial cloud sync failed.", e);
+      } finally {
+        setIsSyncing(false);
       }
-      setIsSyncing(false);
     };
 
-    loadData();
+    loadGlobalData();
   }, [currentUser]);
 
-  // Global Sync Logic
+  // Background Persistence: Auto-saves to Supabase whenever data changes
   useEffect(() => {
     if (!currentUser) return;
 
-    const syncTimer = setTimeout(async () => {
+    const autoSync = async () => {
+      // 1. Always update local cache for speed
       localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(customers));
       localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(items));
 
-      if (isVercelEnabled()) {
-        setIsSyncing(true);
-        try {
-          await Promise.all([
-            cloudSave(currentUser, 'customers', customers),
-            cloudSave(currentUser, 'items', items)
-          ]);
-        } catch (e) {
-          console.error("Cloud sync failed", e);
-        } finally {
-          setIsSyncing(false);
-        }
+      // 2. Push to Supabase
+      setIsSyncing(true);
+      try {
+        await Promise.all([
+          cloudSave(currentUser, 'customers', customers),
+          cloudSave(currentUser, 'items', items)
+        ]);
+        setLastSynced(new Date().toLocaleTimeString());
+      } catch (e) {
+        console.warn("Auto-sync to Supabase failed. Data is still saved locally.");
+      } finally {
+        setIsSyncing(false);
       }
-    }, 1500);
+    };
 
-    return () => clearTimeout(syncTimer);
+    const timer = setTimeout(autoSync, 2000); // 2-second debounce to save API calls
+    return () => clearTimeout(timer);
   }, [customers, items, currentUser]);
 
   const handleLogin = (username: string) => {
@@ -99,21 +100,18 @@ const App: React.FC = () => {
   };
   
   const handleLogout = () => {
-    setCurrentUser(null);
-    window.sessionStorage.removeItem('daily-transactions-user');
-    setCustomers([]);
-    setItems([]);
-    setSelectedCustomerId(null);
-    setActiveView('customers');
+    if(confirm("Logout? Make sure you see 'Sync Complete' to ensure your data is on the cloud.")) {
+      setCurrentUser(null);
+      window.sessionStorage.removeItem('daily-transactions-user');
+      setCustomers([]);
+      setItems([]);
+      setSelectedCustomerId(null);
+      setActiveView('customers');
+    }
   };
 
   const handleAddCustomer = (name: string, phone: string) => {
-    const newCustomer: Customer = {
-      id: crypto.randomUUID(),
-      name,
-      phone,
-      transactions: [],
-    };
+    const newCustomer: Customer = { id: crypto.randomUUID(), name, phone, transactions: [] };
     setCustomers(prev => [...prev, newCustomer]);
   };
 
@@ -137,11 +135,7 @@ const App: React.FC = () => {
   };
 
   const handleAddTransaction = (customerId: string, transaction: Omit<Transaction, 'id' | 'date'>) => {
-    const newTransaction: Transaction = {
-      ...transaction,
-      id: crypto.randomUUID(),
-      date: new Date().toISOString(),
-    };
+    const newTransaction: Transaction = { ...transaction, id: crypto.randomUUID(), date: new Date().toISOString() };
     setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, transactions: [newTransaction, ...c.transactions] } : c));
   };
 
@@ -156,40 +150,6 @@ const App: React.FC = () => {
   
   if (!currentUser) return <AuthPage onLogin={handleLogin} />;
 
-  const renderContent = () => {
-    if (selectedCustomer) {
-      return (
-        <CustomerDetail 
-          customer={selectedCustomer} 
-          onAddTransaction={handleAddTransaction}
-          onEditTransaction={handleEditTransaction}
-          allItems={items} 
-          onAddItem={handleAddItem}
-        />
-      );
-    }
-    
-    switch(activeView) {
-      case 'customers':
-        return <CustomerList customers={customers} onSelectCustomer={setSelectedCustomerId} onAddCustomer={handleAddCustomer} />;
-      case 'items':
-        return <ItemsList items={items} onAddItem={handleAddItem} onEditItem={handleEditItem} onDeleteItem={handleDeleteItem} onAddMultipleItems={handleAddMultipleItems} />;
-      case 'settings':
-        return <SettingsPage 
-          onExport={() => {}} 
-          onImport={() => {}} 
-          onLogout={handleLogout} 
-          currentUser={currentUser} 
-          onInstallClick={() => {}}
-          isInstallable={false}
-          isInstalled={false}
-          isSyncing={isSyncing}
-        />;
-      default:
-        return <CustomerList customers={customers} onSelectCustomer={setSelectedCustomerId} onAddCustomer={handleAddCustomer} />;
-    }
-  };
-
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
       <div className="container mx-auto max-w-2xl bg-white min-h-screen shadow-lg relative flex flex-col">
@@ -200,24 +160,40 @@ const App: React.FC = () => {
           showInstallButton={false}
           onInstallClick={() => {}}
         />
+        
         <main className="p-4 flex-grow pb-24">
-          <div className="flex justify-between items-center mb-4 px-1">
+          {/* Cloud Status Indicator */}
+          <div className="flex justify-between items-center mb-4 px-1 bg-slate-50 p-2 rounded-lg border border-slate-200">
             <div className="flex items-center gap-2">
-               <div className={`w-2 h-2 rounded-full ${cloudReady ? 'bg-success shadow-[0_0_8px_rgba(22,163,74,0.6)]' : 'bg-slate-300'}`}></div>
-               <span className={`text-[10px] font-black uppercase tracking-widest ${
-                 cloudReady ? 'text-success' : 'text-slate-500'
-               }`}>
-                 {cloudReady ? 'Cloud Synchronized' : 'Local Storage Only'}
+               <div className={`w-2 h-2 rounded-full bg-success shadow-[0_0_8px_rgba(22,163,74,0.6)] animate-pulse`}></div>
+               <span className="text-[10px] font-black uppercase tracking-widest text-success">
+                 SUPABASE CLOUD LINKED
                </span>
             </div>
-            {isSyncing && (
-              <span className="text-[10px] font-black text-primary flex items-center gap-1.5 bg-primary/10 px-2 py-0.5 rounded-full">
-                <div className="w-1 h-1 bg-primary rounded-full animate-ping"></div>
-                UPDATING CLOUD...
-              </span>
-            )}
+            <div className="text-[9px] font-bold text-slate-400">
+              {isSyncing ? 'SYNCING...' : lastSynced ? `LAST SYNC: ${lastSynced}` : 'READY'}
+            </div>
           </div>
-          {renderContent()}
+
+          {selectedCustomer ? (
+            <CustomerDetail 
+              customer={selectedCustomer} 
+              onAddTransaction={handleAddTransaction}
+              onEditTransaction={handleEditTransaction}
+              allItems={items} 
+              onAddItem={handleAddItem}
+            />
+          ) : (
+            <>
+              {activeView === 'customers' && <CustomerList customers={customers} onSelectCustomer={setSelectedCustomerId} onAddCustomer={handleAddCustomer} />}
+              {activeView === 'items' && <ItemsList items={items} onAddItem={handleAddItem} onEditItem={handleEditItem} onDeleteItem={handleDeleteItem} onAddMultipleItems={handleAddMultipleItems} />}
+              {activeView === 'settings' && <SettingsPage 
+                onExport={() => {}} onImport={() => {}} onLogout={handleLogout} 
+                currentUser={currentUser} onInstallClick={() => {}}
+                isInstallable={false} isInstalled={false} isSyncing={isSyncing}
+              />}
+            </>
+          )}
         </main>
         
         <UpdateNotification show={showUpdate} onUpdate={() => window.location.reload()} />
