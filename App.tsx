@@ -21,44 +21,45 @@ const App: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [cloudStatus, setCloudStatus] = useState<'connected' | 'unconfigured'>(
-    isVercelEnabled() ? 'connected' : 'unconfigured'
-  );
+  const [cloudReady, setCloudReady] = useState(isVercelEnabled());
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<View>('customers');
   const [showUpdate, setShowUpdate] = useState(false);
 
-  // Initial Data Load
+  // Initial Data Load on Login
   useEffect(() => {
     const loadData = async () => {
       if (!currentUser) return;
       setIsSyncing(true);
 
-      if (isVercelEnabled()) {
+      const isCloud = isVercelEnabled();
+      setCloudReady(isCloud);
+
+      if (isCloud) {
+        // Attempt cloud fetch
         const [cloudCustomers, cloudItems] = await Promise.all([
           cloudFetch(currentUser, 'customers'),
           cloudFetch(currentUser, 'items')
         ]);
         
-        if (cloudCustomers) setCustomers(cloudCustomers);
+        if (cloudCustomers !== null) setCustomers(cloudCustomers);
         else {
           const local = localStorage.getItem(`daily-transactions-customers-${currentUser}`);
           setCustomers(local ? JSON.parse(local) : []);
         }
 
-        if (cloudItems) setItems(cloudItems);
+        if (cloudItems !== null) setItems(cloudItems);
         else {
           const local = localStorage.getItem(`daily-transactions-items-${currentUser}`);
           setItems(local ? JSON.parse(local) : []);
         }
-        setCloudStatus('connected');
       } else {
+        // Local fallback
         const storedCustomers = localStorage.getItem(`daily-transactions-customers-${currentUser}`);
         setCustomers(storedCustomers ? JSON.parse(storedCustomers) : []);
         const storedItems = localStorage.getItem(`daily-transactions-items-${currentUser}`);
         setItems(storedItems ? JSON.parse(storedItems) : []);
-        setCloudStatus('unconfigured');
       }
       setIsSyncing(false);
     };
@@ -66,26 +67,27 @@ const App: React.FC = () => {
     loadData();
   }, [currentUser]);
 
-  // Sync Data to Cloud/Local
+  // Global Sync Logic
   useEffect(() => {
     if (!currentUser) return;
 
     const syncTimer = setTimeout(async () => {
-      setIsSyncing(true);
-      
-      // Always save to local storage as a cache
       localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(customers));
       localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(items));
 
-      // Push to Vercel Cloud if enabled
       if (isVercelEnabled()) {
-        await Promise.all([
-          cloudSave(currentUser, 'customers', customers),
-          cloudSave(currentUser, 'items', items)
-        ]);
-        setCloudStatus('connected');
+        setIsSyncing(true);
+        try {
+          await Promise.all([
+            cloudSave(currentUser, 'customers', customers),
+            cloudSave(currentUser, 'items', items)
+          ]);
+        } catch (e) {
+          console.error("Cloud sync failed", e);
+        } finally {
+          setIsSyncing(false);
+        }
       }
-      setIsSyncing(false);
     }, 1500);
 
     return () => clearTimeout(syncTimer);
@@ -200,14 +202,18 @@ const App: React.FC = () => {
         />
         <main className="p-4 flex-grow pb-24">
           <div className="flex justify-between items-center mb-4 px-1">
-            <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
-              cloudStatus === 'connected' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-            }`}>
-              {cloudStatus === 'connected' ? '● Vercel Database Connected' : '⚠ Local Storage Mode'}
-            </span>
+            <div className="flex items-center gap-2">
+               <div className={`w-2 h-2 rounded-full ${cloudReady ? 'bg-success shadow-[0_0_8px_rgba(22,163,74,0.6)]' : 'bg-slate-300'}`}></div>
+               <span className={`text-[10px] font-black uppercase tracking-widest ${
+                 cloudReady ? 'text-success' : 'text-slate-500'
+               }`}>
+                 {cloudReady ? 'Cloud Synchronized' : 'Local Storage Only'}
+               </span>
+            </div>
             {isSyncing && (
-              <span className="text-[10px] font-black text-primary animate-pulse">
-                SYNCING TO CLOUD...
+              <span className="text-[10px] font-black text-primary flex items-center gap-1.5 bg-primary/10 px-2 py-0.5 rounded-full">
+                <div className="w-1 h-1 bg-primary rounded-full animate-ping"></div>
+                UPDATING CLOUD...
               </span>
             )}
           </div>

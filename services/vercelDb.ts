@@ -4,11 +4,21 @@ export interface VercelConfig {
   token: string;
 }
 
+/**
+ * Gets the configuration for the Vercel KV database exclusively from the environment.
+ * This ensures the app is "hard-wired" to the Vercel backend for all users.
+ */
 const getConfig = (): VercelConfig | null => {
-  const url = localStorage.getItem('vercel-kv-url');
-  const token = localStorage.getItem('vercel-kv-token');
-  if (!url || !token) return null;
-  return { url, token };
+  // Vercel automatically injects these into the environment when the KV store is linked.
+  const envUrl = (process.env as any).KV_REST_API_URL;
+  const envToken = (process.env as any).KV_REST_API_TOKEN;
+
+  if (envUrl && envToken) {
+    return { url: envUrl, token: envToken };
+  }
+
+  console.warn("Vercel KV environment variables are missing. Ensure your KV store is linked in the Vercel dashboard.");
+  return null;
 };
 
 export const isVercelEnabled = () => {
@@ -29,21 +39,33 @@ async function kvRequest(command: any[]) {
       },
       body: JSON.stringify(command),
     });
+    
+    if (!response.ok) {
+      throw new Error(`Cloud Storage Error: ${response.statusText}`);
+    }
+    
     const result = await response.json();
     return result.result;
   } catch (error) {
-    console.error("Vercel KV Error:", error);
+    console.error("Vercel KV Communication Error:", error);
     return null;
   }
 }
 
+/**
+ * Saves data to the cloud using the user ID as part of the key.
+ * This partitions data so users only see their own records.
+ */
 export const cloudSave = async (userId: string, key: string, data: any) => {
-  const fullKey = `kb_${key}_${userId}`;
+  const fullKey = `dt_app_${key}_${userId.toLowerCase().trim()}`;
   return await kvRequest(["SET", fullKey, JSON.stringify(data)]);
 };
 
+/**
+ * Fetches data from the cloud for a specific user.
+ */
 export const cloudFetch = async (userId: string, key: string) => {
-  const fullKey = `kb_${key}_${userId}`;
+  const fullKey = `dt_app_${key}_${userId.toLowerCase().trim()}`;
   const result = await kvRequest(["GET", fullKey]);
   if (!result) return null;
   try {
