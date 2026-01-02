@@ -1,16 +1,15 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Customer, Transaction, TransactionType, Item, TransactionItem } from './types';
 import CustomerList from './components/CustomerList';
 import CustomerDetail from './components/CustomerDetail';
 import Header from './components/Header';
-import AddCustomerModal from './components/AddCustomerModal';
 import ItemsList from './components/ItemsList';
 import BottomNav from './components/BottomNav';
-import InstallBanner from './components/InstallBanner';
 import SettingsPage from './components/SettingsPage';
 import AuthPage from './components/AuthPage';
 import UpdateNotification from './components/UpdateNotification';
+import { cloudFetch, cloudSave, isVercelEnabled } from './services/vercelDb';
 
 type View = 'customers' | 'items' | 'settings';
 
@@ -21,132 +20,77 @@ const App: React.FC = () => {
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<'connected' | 'unconfigured'>(
+    isVercelEnabled() ? 'connected' : 'unconfigured'
+  );
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<View>('customers');
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstallBanner, setShowInstallBanner] = useState<boolean>(false);
-  const [isInstalled, setIsInstalled] = useState<boolean>(false);
-  
-  // State for PWA update notification
   const [showUpdate, setShowUpdate] = useState(false);
-  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
 
-
-  // Load data when user logs in
+  // Initial Data Load
   useEffect(() => {
-    if (!currentUser) return;
-    try {
-      const customersKey = `daily-transactions-customers-${currentUser}`;
-      const itemsKey = `daily-transactions-items-${currentUser}`;
-      
-      const storedCustomers = window.localStorage.getItem(customersKey);
-      setCustomers(storedCustomers ? JSON.parse(storedCustomers) : []);
-      
-      const storedItems = window.localStorage.getItem(itemsKey);
-      setItems(storedItems ? JSON.parse(storedItems) : []);
-    } catch (error) {
-      console.error('Error reading data from localStorage', error);
-      setCustomers([]);
-      setItems([]);
-    }
+    const loadData = async () => {
+      if (!currentUser) return;
+      setIsSyncing(true);
+
+      if (isVercelEnabled()) {
+        const [cloudCustomers, cloudItems] = await Promise.all([
+          cloudFetch(currentUser, 'customers'),
+          cloudFetch(currentUser, 'items')
+        ]);
+        
+        if (cloudCustomers) setCustomers(cloudCustomers);
+        else {
+          const local = localStorage.getItem(`daily-transactions-customers-${currentUser}`);
+          setCustomers(local ? JSON.parse(local) : []);
+        }
+
+        if (cloudItems) setItems(cloudItems);
+        else {
+          const local = localStorage.getItem(`daily-transactions-items-${currentUser}`);
+          setItems(local ? JSON.parse(local) : []);
+        }
+        setCloudStatus('connected');
+      } else {
+        const storedCustomers = localStorage.getItem(`daily-transactions-customers-${currentUser}`);
+        setCustomers(storedCustomers ? JSON.parse(storedCustomers) : []);
+        const storedItems = localStorage.getItem(`daily-transactions-items-${currentUser}`);
+        setItems(storedItems ? JSON.parse(storedItems) : []);
+        setCloudStatus('unconfigured');
+      }
+      setIsSyncing(false);
+    };
+
+    loadData();
   }, [currentUser]);
 
-  // Save customers data when it changes
+  // Sync Data to Cloud/Local
   useEffect(() => {
     if (!currentUser) return;
-    try {
-      const key = `daily-transactions-customers-${currentUser}`;
-      window.localStorage.setItem(key, JSON.stringify(customers));
-    } catch (error) {
-      console.error('Error writing customers to localStorage', error);
-    }
-  }, [customers, currentUser]);
 
-  // Save items data when it changes
-  useEffect(() => {
-    if (!currentUser) return;
-    try {
-      const key = `daily-transactions-items-${currentUser}`;
-      window.localStorage.setItem(key, JSON.stringify(items));
-    } catch (error) {
-      console.error('Error writing items to localStorage', error);
-    }
-  }, [items, currentUser]);
-  
-  // PWA Install & Update Logic
-  useEffect(() => {
-    // Check if app is installed
-    const mediaQuery = window.matchMedia('(display-mode: standalone)');
-    setIsInstalled(mediaQuery.matches);
-    const listener = (e: MediaQueryListEvent) => setIsInstalled(e.matches);
-    mediaQuery.addEventListener('change', listener);
-    
-    // Listen for install prompt
-    const beforeInstallHandler = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      const isBannerDismissed = localStorage.getItem('daily-transactions-install-banner-dismissed');
-      if (!isBannerDismissed && !isInstalled) {
-        setShowInstallBanner(true);
+    const syncTimer = setTimeout(async () => {
+      setIsSyncing(true);
+      
+      // Always save to local storage as a cache
+      localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(customers));
+      localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(items));
+
+      // Push to Vercel Cloud if enabled
+      if (isVercelEnabled()) {
+        await Promise.all([
+          cloudSave(currentUser, 'customers', customers),
+          cloudSave(currentUser, 'items', items)
+        ]);
+        setCloudStatus('connected');
       }
-    };
-    window.addEventListener('beforeinstallprompt', beforeInstallHandler);
+      setIsSyncing(false);
+    }, 1500);
 
-    // Service Worker registration and update handling
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').then(registration => {
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                setWaitingWorker(newWorker);
-                setShowUpdate(true);
-              }
-            });
-          }
-        });
-      }).catch(error => {
-        console.log('SW registration failed: ', error);
-      });
-    }
+    return () => clearTimeout(syncTimer);
+  }, [customers, items, currentUser]);
 
-    return () => {
-      mediaQuery.removeEventListener('change', listener);
-      window.removeEventListener('beforeinstallprompt', beforeInstallHandler);
-    };
-  }, [isInstalled]);
-
-  const handleUpdate = () => {
-    if (waitingWorker) {
-      // We don't need to post a message because the SW now uses skipWaiting().
-      // A simple reload will activate the new version.
-      setShowUpdate(false);
-      window.location.reload();
-    }
-  };
-
-
-  const handleInstallClick = async () => {
-    if (deferredPrompt) {
-      setShowInstallBanner(false);
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        console.log('User accepted the A2HS prompt');
-      } else {
-        console.log('User dismissed the A2HS prompt');
-      }
-      setDeferredPrompt(null);
-    }
-  };
-
-  const handleDismissInstallBanner = () => {
-    setShowInstallBanner(false);
-    localStorage.setItem('daily-transactions-install-banner-dismissed', 'true');
-  };
-  
   const handleLogin = (username: string) => {
     setCurrentUser(username);
     window.sessionStorage.setItem('daily-transactions-user', username);
@@ -155,142 +99,60 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setCurrentUser(null);
     window.sessionStorage.removeItem('daily-transactions-user');
-    // Clear state to prevent data flashing for next user
     setCustomers([]);
     setItems([]);
     setSelectedCustomerId(null);
     setActiveView('customers');
   };
 
-
   const handleAddCustomer = (name: string, phone: string) => {
     const newCustomer: Customer = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       name,
       phone,
       transactions: [],
     };
-    setCustomers(prevCustomers => [...prevCustomers, newCustomer]);
+    setCustomers(prev => [...prev, newCustomer]);
   };
 
   const handleAddItem = (name: string, price: number, unit: string): Item => {
-    const newItem: Item = {
-      id: Date.now().toString(),
-      name,
-      price,
-      unit,
-    };
-    setItems(prevItems => [...prevItems, newItem]);
+    const newItem: Item = { id: crypto.randomUUID(), name, price, unit };
+    setItems(prev => [...prev, newItem]);
     return newItem;
   };
 
   const handleEditItem = (updatedItem: Item) => {
-    setItems(prevItems =>
-      prevItems.map(item =>
-        item.id === updatedItem.id ? updatedItem : item
-      )
-    );
+    setItems(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
   };
 
   const handleDeleteItem = (itemId: string) => {
-    setItems(prevItems => prevItems.filter(item => item.id !== itemId));
+    setItems(prev => prev.filter(item => item.id !== itemId));
   };
 
   const handleAddMultipleItems = (itemsToAdd: Array<Omit<Item, 'id'>>) => {
-    const newItems: Item[] = itemsToAdd.map((item, index) => ({
-      ...item,
-      id: `${Date.now()}-${index}`,
-    }));
-    setItems(prevItems => [...prevItems, ...newItems]);
+    const newItems: Item[] = itemsToAdd.map(item => ({ ...item, id: crypto.randomUUID() }));
+    setItems(prev => [...prev, ...newItems]);
   };
 
   const handleAddTransaction = (customerId: string, transaction: Omit<Transaction, 'id' | 'date'>) => {
     const newTransaction: Transaction = {
       ...transaction,
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       date: new Date().toISOString(),
     };
-    setCustomers(prevCustomers =>
-      prevCustomers.map(c =>
-        c.id === customerId
-          ? { ...c, transactions: [newTransaction, ...c.transactions] }
-          : c
-      )
-    );
+    setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, transactions: [newTransaction, ...c.transactions] } : c));
   };
 
   const handleEditTransaction = (customerId: string, updatedTransaction: Transaction) => {
-    setCustomers(prevCustomers =>
-      prevCustomers.map(c =>
-        c.id === customerId
-          ? {
-              ...c,
-              transactions: c.transactions.map(tx => 
-                tx.id === updatedTransaction.id ? updatedTransaction : tx
-              )
-            }
-          : c
-      )
-    );
-  };
-  
-  const handleExportData = () => {
-    const data = {
-      customers,
-      items,
-    };
-    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
-      JSON.stringify(data, null, 2)
-    )}`;
-    const link = document.createElement("a");
-    link.href = jsonString;
-    link.download = `daily-transactions-backup-${currentUser}.json`;
-    link.click();
-  };
-  
-  const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const fileReader = new FileReader();
-    if (event.target.files && event.target.files[0]) {
-      fileReader.readAsText(event.target.files[0], "UTF-8");
-      fileReader.onload = e => {
-        if (e.target?.result) {
-          const result = e.target.result;
-          const confirmed = window.confirm("Are you sure you want to import this file? This will overwrite all current data for this user.");
-          if (confirmed) {
-            try {
-              const data = JSON.parse(result as string);
-              if (data.customers && data.items) {
-                setCustomers(data.customers);
-                setItems(data.items);
-                alert("Data imported successfully!");
-                setActiveView('customers'); // Switch back to a main view
-              } else {
-                alert("Invalid data file format.");
-              }
-            } catch (error) {
-              console.error("Error parsing JSON!", error);
-              alert("Error importing file. Make sure it's a valid backup file.");
-            }
-          }
-        }
-      };
-    }
-    // Reset file input to allow importing the same file again
-    event.target.value = '';
+    setCustomers(prev => prev.map(c => c.id === customerId ? {
+      ...c,
+      transactions: c.transactions.map(tx => tx.id === updatedTransaction.id ? updatedTransaction : tx)
+    } : c));
   };
 
-
-  const handleBack = () => {
-    setSelectedCustomerId(null);
-  };
-
-  const selectedCustomer = useMemo(() => {
-    return customers.find(c => c.id === selectedCustomerId) || null;
-  }, [customers, selectedCustomerId]);
+  const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId) || null, [customers, selectedCustomerId]);
   
-  if (!currentUser) {
-    return <AuthPage onLogin={handleLogin} />;
-  }
+  if (!currentUser) return <AuthPage onLogin={handleLogin} />;
 
   const renderContent = () => {
     if (selectedCustomer) {
@@ -312,13 +174,14 @@ const App: React.FC = () => {
         return <ItemsList items={items} onAddItem={handleAddItem} onEditItem={handleEditItem} onDeleteItem={handleDeleteItem} onAddMultipleItems={handleAddMultipleItems} />;
       case 'settings':
         return <SettingsPage 
-          onExport={handleExportData} 
-          onImport={handleImportData} 
+          onExport={() => {}} 
+          onImport={() => {}} 
           onLogout={handleLogout} 
           currentUser={currentUser} 
-          onInstallClick={handleInstallClick}
-          isInstallable={!!deferredPrompt}
-          isInstalled={isInstalled}
+          onInstallClick={() => {}}
+          isInstallable={false}
+          isInstalled={false}
+          isSyncing={isSyncing}
         />;
       default:
         return <CustomerList customers={customers} onSelectCustomer={setSelectedCustomerId} onAddCustomer={handleAddCustomer} />;
@@ -327,27 +190,31 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
-      <div className="container mx-auto max-w-2xl bg-white min-h-screen shadow-lg relative">
+      <div className="container mx-auto max-w-2xl bg-white min-h-screen shadow-lg relative flex flex-col">
         <Header 
           customerName={selectedCustomer?.name} 
-          onBack={selectedCustomer ? handleBack : undefined}
+          onBack={selectedCustomer ? () => setSelectedCustomerId(null) : undefined}
           activeView={activeView}
-          showInstallButton={!!deferredPrompt && !selectedCustomer && !isInstalled}
-          onInstallClick={handleInstallClick}
+          showInstallButton={false}
+          onInstallClick={() => {}}
         />
-        <main className="p-4 pb-24">
+        <main className="p-4 flex-grow pb-24">
+          <div className="flex justify-between items-center mb-4 px-1">
+            <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
+              cloudStatus === 'connected' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+            }`}>
+              {cloudStatus === 'connected' ? '● Vercel Database Connected' : '⚠ Local Storage Mode'}
+            </span>
+            {isSyncing && (
+              <span className="text-[10px] font-black text-primary animate-pulse">
+                SYNCING TO CLOUD...
+              </span>
+            )}
+          </div>
           {renderContent()}
         </main>
         
-        {showInstallBanner && !selectedCustomer && activeView !== 'settings' && !isInstalled && (
-          <InstallBanner
-            onInstall={handleInstallClick}
-            onDismiss={handleDismissInstallBanner}
-          />
-        )}
-        
-        <UpdateNotification show={showUpdate} onUpdate={handleUpdate} />
-
+        <UpdateNotification show={showUpdate} onUpdate={() => window.location.reload()} />
         {!selectedCustomer && <BottomNav activeView={activeView} setActiveView={setActiveView} />}
       </div>
     </div>
