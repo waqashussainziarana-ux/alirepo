@@ -4,6 +4,7 @@ import { DownloadIcon } from './icons/DownloadIcon';
 import { UploadIcon } from './icons/UploadIcon';
 import { LogoutIcon } from './icons/LogoutIcon';
 import { isVercelEnabled } from '../services/vercelDb';
+import { CheckIcon } from './icons/CheckIcon';
 
 interface SettingsPageProps {
   onExport: () => void;
@@ -16,7 +17,15 @@ interface SettingsPageProps {
   isSyncing?: boolean;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ onExport, onImport, onLogout, currentUser, isSyncing }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ 
+  onExport, 
+  onImport, 
+  onLogout, 
+  currentUser, 
+  isInstalled,
+  onInstallClick,
+  isInstallable
+}) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cloudActive = isVercelEnabled();
 
@@ -43,6 +52,59 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onExport, onImport, onLogou
             <span>Sign Out</span>
           </button>
         </div>
+      </div>
+
+      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <h2 className="text-lg font-bold text-slate-800 mb-4">App Installation</h2>
+        {isInstalled ? (
+          <div className="bg-success/10 border border-success/30 rounded-lg p-4 flex items-center gap-4">
+            <div className="bg-success text-white p-2 rounded-full">
+              <CheckIcon className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-success font-bold text-sm">App is Installed</p>
+              <p className="text-success/70 text-xs">You are using the official app. Offline access and push features are enabled.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {isInstallable && (
+              <button
+                onClick={onInstallClick}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary-dark transition-colors"
+              >
+                <DownloadIcon className="w-5 h-5" />
+                <span>Install Now</span>
+              </button>
+            )}
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded">ANDROID</div>
+                  <span className="font-bold text-sm text-slate-700">Chrome</span>
+                </div>
+                <ol className="text-xs text-slate-500 space-y-1 list-decimal ml-4">
+                  <li>Open this site in Chrome.</li>
+                  <li>Tap the <strong>three dots (⋮)</strong> icon.</li>
+                  <li>Select <strong>Install App</strong> or <strong>Add to Home screen</strong>.</li>
+                </ol>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="bg-black text-white text-[10px] font-bold px-1.5 py-0.5 rounded">IOS</div>
+                  <span className="font-bold text-sm text-slate-700">Safari</span>
+                </div>
+                <ol className="text-xs text-slate-500 space-y-1 list-decimal ml-4">
+                  <li>Open this site in Safari.</li>
+                  <li>Tap the <strong>Share</strong> button (box with arrow).</li>
+                  <li>Scroll down and select <strong>Add to Home Screen</strong>.</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
@@ -73,7 +135,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onExport, onImport, onLogou
       
       <div className="text-center py-4">
         <div className="text-[10px] text-slate-300 font-black uppercase tracking-[0.2em]">
-          Daily Transactions v4.0
+          Daily Transactions v4.5
         </div>
       </div>
     </div>

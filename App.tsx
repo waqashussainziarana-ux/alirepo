@@ -9,6 +9,7 @@ import BottomNav from './components/BottomNav';
 import SettingsPage from './components/SettingsPage';
 import AuthPage from './components/AuthPage';
 import UpdateNotification from './components/UpdateNotification';
+import InstallBanner from './components/InstallBanner';
 import { cloudFetch, cloudSave, isVercelEnabled } from './services/vercelDb';
 
 type View = 'customers' | 'items' | 'settings';
@@ -27,14 +28,60 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('customers');
   const [showUpdate, setShowUpdate] = useState(false);
 
-  // Auto-Login Sync: Fetches everything from Supabase immediately on login
+  // PWA Install States
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  useEffect(() => {
+    // Check if already installed
+    const checkInstalled = () => {
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+      const isIOSStandalone = (window.navigator as any).standalone === true;
+      setIsInstalled(isStandalone || isIOSStandalone);
+    };
+
+    checkInstalled();
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      // Only show banner if not already in standalone mode
+      if (!window.matchMedia('(display-mode: standalone)').matches) {
+        setShowInstallBanner(true);
+      }
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    window.addEventListener('appinstalled', () => {
+      setDeferredPrompt(null);
+      setShowInstallBanner(false);
+      setIsInstalled(true);
+      console.log('PWA was installed');
+    });
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response: ${outcome}`);
+    setDeferredPrompt(null);
+    setShowInstallBanner(false);
+  };
+
+  // Auto-Login Sync
   useEffect(() => {
     const loadGlobalData = async () => {
       if (!currentUser) return;
       setIsSyncing(true);
       
       try {
-        // Step 1: Attempt Cloud Fetch
         const [cloudCustomers, cloudItems] = await Promise.all([
           cloudFetch(currentUser, 'customers'),
           cloudFetch(currentUser, 'items')
@@ -43,7 +90,6 @@ const App: React.FC = () => {
         let finalCustomers = cloudCustomers || [];
         let finalItems = cloudItems || [];
 
-        // Step 2: Fallback to Local Storage if Cloud is empty (Migration helper)
         if (finalCustomers.length === 0) {
           const local = localStorage.getItem(`daily-transactions-customers-${currentUser}`);
           if (local) finalCustomers = JSON.parse(local);
@@ -66,16 +112,14 @@ const App: React.FC = () => {
     loadGlobalData();
   }, [currentUser]);
 
-  // Background Persistence: Auto-saves to Supabase whenever data changes
+  // Background Persistence
   useEffect(() => {
     if (!currentUser) return;
 
     const autoSync = async () => {
-      // 1. Always update local cache for speed
       localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(customers));
       localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(items));
 
-      // 2. Push to Supabase
       setIsSyncing(true);
       try {
         await Promise.all([
@@ -84,13 +128,13 @@ const App: React.FC = () => {
         ]);
         setLastSynced(new Date().toLocaleTimeString());
       } catch (e) {
-        console.warn("Auto-sync to Supabase failed. Data is still saved locally.");
+        console.warn("Auto-sync to Supabase failed.");
       } finally {
         setIsSyncing(false);
       }
     };
 
-    const timer = setTimeout(autoSync, 2000); // 2-second debounce to save API calls
+    const timer = setTimeout(autoSync, 2000);
     return () => clearTimeout(timer);
   }, [customers, items, currentUser]);
 
@@ -157,12 +201,11 @@ const App: React.FC = () => {
           customerName={selectedCustomer?.name} 
           onBack={selectedCustomer ? () => setSelectedCustomerId(null) : undefined}
           activeView={activeView}
-          showInstallButton={false}
-          onInstallClick={() => {}}
+          showInstallButton={!!deferredPrompt && !isInstalled}
+          onInstallClick={handleInstallClick}
         />
         
         <main className="p-4 flex-grow pb-24">
-          {/* Cloud Status Indicator */}
           <div className="flex justify-between items-center mb-4 px-1 bg-slate-50 p-2 rounded-lg border border-slate-200">
             <div className="flex items-center gap-2">
                <div className={`w-2 h-2 rounded-full bg-success shadow-[0_0_8px_rgba(22,163,74,0.6)] animate-pulse`}></div>
@@ -189,13 +232,20 @@ const App: React.FC = () => {
               {activeView === 'items' && <ItemsList items={items} onAddItem={handleAddItem} onEditItem={handleEditItem} onDeleteItem={handleDeleteItem} onAddMultipleItems={handleAddMultipleItems} />}
               {activeView === 'settings' && <SettingsPage 
                 onExport={() => {}} onImport={() => {}} onLogout={handleLogout} 
-                currentUser={currentUser} onInstallClick={() => {}}
-                isInstallable={false} isInstalled={false} isSyncing={isSyncing}
+                currentUser={currentUser} onInstallClick={handleInstallClick}
+                isInstallable={!!deferredPrompt} isInstalled={isInstalled} isSyncing={isSyncing}
               />}
             </>
           )}
         </main>
         
+        {showInstallBanner && !isInstalled && (
+          <InstallBanner 
+            onInstall={handleInstallClick} 
+            onDismiss={() => setShowInstallBanner(false)} 
+          />
+        )}
+
         <UpdateNotification show={showUpdate} onUpdate={() => window.location.reload()} />
         {!selectedCustomer && <BottomNav activeView={activeView} setActiveView={setActiveView} />}
       </div>
