@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Customer, Transaction, TransactionType, Item, TransactionItem } from './types';
 import CustomerList from './components/CustomerList';
@@ -217,6 +218,21 @@ const App: React.FC = () => {
       )
     );
   };
+
+  const handleEditTransaction = (customerId: string, updatedTransaction: Transaction) => {
+    setCustomers(prevCustomers =>
+      prevCustomers.map(c =>
+        c.id === customerId
+          ? {
+              ...c,
+              transactions: c.transactions.map(tx => 
+                tx.id === updatedTransaction.id ? updatedTransaction : tx
+              )
+            }
+          : c
+      )
+    );
+  };
   
   const handleExportData = () => {
     const data = {
@@ -282,6 +298,7 @@ const App: React.FC = () => {
         <CustomerDetail 
           customer={selectedCustomer} 
           onAddTransaction={handleAddTransaction}
+          onEditTransaction={handleEditTransaction}
           allItems={items} 
           onAddItem={handleAddItem}
         />

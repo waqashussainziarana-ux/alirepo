@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Transaction, TransactionType, Item, TransactionItem } from '../types';
 import { formatCurrency } from '../utils/helpers';
@@ -10,6 +11,8 @@ interface AddTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddTransaction: (transaction: Omit<Transaction, 'id' | 'date'>) => void;
+  onEditTransaction?: (transaction: Transaction) => void;
+  transactionToEdit?: Transaction | null;
   transactionType: TransactionType;
   allItems: Item[];
   onAddItem: (name: string, price: number, unit: string) => Item;
@@ -19,6 +22,8 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   isOpen,
   onClose,
   onAddTransaction,
+  onEditTransaction,
+  transactionToEdit,
   transactionType,
   allItems,
   onAddItem,
@@ -38,14 +43,29 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   }, [selectedItems, cashAmount, mode]);
 
   useEffect(() => {
-    if (!isOpen) {
-      setDescription('');
-      setSelectedItems([]);
-      setSelectedItemId('');
-      setCashAmount('');
-      setMode('items');
+    if (isOpen) {
+      if (transactionToEdit) {
+        // Edit mode
+        setDescription(transactionToEdit.description || '');
+        if (transactionToEdit.items && transactionToEdit.items.length > 0) {
+          setMode('items');
+          setSelectedItems(transactionToEdit.items);
+          setCashAmount('');
+        } else {
+          setMode('cash');
+          setCashAmount(transactionToEdit.amount.toString());
+          setSelectedItems([]);
+        }
+      } else {
+        // Add mode
+        setDescription('');
+        setSelectedItems([]);
+        setSelectedItemId('');
+        setCashAmount('');
+        setMode('items');
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, transactionToEdit]);
 
   const handleItemSelection = (itemId: string) => {
     if (itemId === '--add-new--') {
@@ -117,12 +137,22 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (totalAmount > 0) {
-      onAddTransaction({
-        amount: totalAmount,
-        description: description.trim(),
-        type: transactionType,
-        items: mode === 'items' ? selectedItems : [],
-      });
+      if (transactionToEdit && onEditTransaction) {
+        onEditTransaction({
+          ...transactionToEdit,
+          amount: totalAmount,
+          description: description.trim(),
+          type: transactionType,
+          items: mode === 'items' ? selectedItems : [],
+        });
+      } else {
+        onAddTransaction({
+          amount: totalAmount,
+          description: description.trim(),
+          type: transactionType,
+          items: mode === 'items' ? selectedItems : [],
+        });
+      }
       onClose();
     }
   };
@@ -130,7 +160,8 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   if (!isOpen) return null;
 
   const isGave = transactionType === TransactionType.GAVE;
-  const title = isGave ? 'You Gave' : 'You Got';
+  const isEdit = !!transactionToEdit;
+  const title = isEdit ? `Edit ${isGave ? 'You Gave' : 'You Got'}` : (isGave ? 'You Gave' : 'You Got');
   const buttonColor = isGave ? 'bg-danger hover:bg-red-700' : 'bg-success hover:bg-green-700';
 
   return (
@@ -145,24 +176,26 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       >
         <h2 className="text-xl font-bold mb-4 text-slate-800">{title}</h2>
         <form onSubmit={handleSubmit} className="flex flex-col h-[60vh]">
-          <div className="mb-4 border-b border-gray-200">
-            <nav className="-mb-px flex space-x-4" aria-label="Tabs">
-              <button
-                type="button"
-                onClick={() => setMode('items')}
-                className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-t-md ${mode === 'items' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                <CubeIcon className="w-5 h-5"/> Items
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('cash')}
-                className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-t-md ${mode === 'cash' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                <CashIcon className="w-5 h-5"/> Cash
-              </button>
-            </nav>
-          </div>
+          {!isEdit && (
+            <div className="mb-4 border-b border-gray-200">
+              <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                <button
+                  type="button"
+                  onClick={() => setMode('items')}
+                  className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-t-md ${mode === 'items' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <CubeIcon className="w-5 h-5"/> Items
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('cash')}
+                  className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-t-md ${mode === 'cash' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <CashIcon className="w-5 h-5"/> Cash
+                </button>
+              </nav>
+            </div>
+          )}
 
           <div className="flex-grow overflow-y-auto pr-2">
             {mode === 'items' ? (
@@ -185,33 +218,35 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
                 <div className="mb-4">
                   <label htmlFor="items" className="block text-sm font-medium text-slate-600 mb-1">
-                    Add Items
+                    {isEdit ? 'Current Items' : 'Add Items'}
                   </label>
-                  <div className="flex gap-2">
-                    <select
-                      id="items"
-                      value={selectedItemId}
-                      onChange={(e) => handleItemSelection(e.target.value)}
-                      className="flex-grow px-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
-                    >
-                      <option value="">Select an item</option>
-                      <option value="--add-new--" className="font-bold text-primary bg-blue-50">-- Add New Item --</option>
-                      {allItems.map(item => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} ({formatCurrency(item.price)}
-                          {item.unit ? ` / ${item.unit}` : ''})
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleAddItem}
-                      disabled={!selectedItemId}
-                      className="px-3 py-2 bg-primary text-white rounded-md hover:bg-primary-dark disabled:bg-slate-300"
-                    >
-                      <PlusIcon className="w-5 h-5"/>
-                    </button>
-                  </div>
+                  {!isEdit && (
+                    <div className="flex gap-2">
+                      <select
+                        id="items"
+                        value={selectedItemId}
+                        onChange={(e) => handleItemSelection(e.target.value)}
+                        className="flex-grow px-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
+                      >
+                        <option value="">Select an item</option>
+                        <option value="--add-new--" className="font-bold text-primary bg-blue-50">-- Add New Item --</option>
+                        {allItems.map(item => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} ({formatCurrency(item.price)}
+                            {item.unit ? ` / ${item.unit}` : ''})
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleAddItem}
+                        disabled={!selectedItemId}
+                        className="px-3 py-2 bg-primary text-white rounded-md hover:bg-primary-dark disabled:bg-slate-300"
+                      >
+                        <PlusIcon className="w-5 h-5"/>
+                      </button>
+                    </div>
+                  )}
                 </div>
                 
                 <div className="space-y-2 mb-4">
@@ -232,9 +267,11 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                           onChange={(e) => handleQuantityChange(item.itemId, parseInt(e.target.value, 10))}
                           className="w-16 p-1 border border-slate-300 rounded-md text-center"
                         />
-                        <button type="button" onClick={() => handleRemoveItem(item.itemId)} className="text-red-500 hover:text-red-700 text-xs font-bold px-1">
-                          &times;
-                        </button>
+                        {!isEdit && (
+                          <button type="button" onClick={() => handleRemoveItem(item.itemId)} className="text-red-500 hover:text-red-700 text-xs font-bold px-1">
+                            &times;
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -298,7 +335,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               disabled={totalAmount <= 0}
               className={`px-4 py-2 text-white rounded-md ${buttonColor} disabled:bg-slate-400`}
             >
-              Save
+              {isEdit ? 'Update' : 'Save'}
             </button>
           </div>
         </form>

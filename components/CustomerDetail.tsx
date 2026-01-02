@@ -1,23 +1,40 @@
+
 import React, { useState } from 'react';
 import { Customer, Transaction, TransactionType, Item } from '../types';
 import AddTransactionModal from './AddTransactionModal';
 import { calculateBalance, formatCurrency } from '../utils/helpers';
+import { PencilIcon } from './icons/PencilIcon';
 
 interface CustomerDetailProps {
   customer: Customer;
   onAddTransaction: (customerId: string, transaction: Omit<Transaction, 'id' | 'date'>) => void;
+  onEditTransaction: (customerId: string, transaction: Transaction) => void;
   allItems: Item[];
   onAddItem: (name: string, price: number, unit: string) => Item;
 }
 
-const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onAddTransaction, allItems, onAddItem }) => {
+const CustomerDetail: React.FC<CustomerDetailProps> = ({ 
+  customer, 
+  onAddTransaction, 
+  onEditTransaction,
+  allItems, 
+  onAddItem 
+}) => {
   const [isModalOpen, setModalOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<TransactionType>(TransactionType.GAVE);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   const balance = calculateBalance(customer);
 
   const handleOpenModal = (type: TransactionType) => {
+    setEditingTransaction(null);
     setTransactionType(type);
+    setModalOpen(true);
+  };
+
+  const handleOpenEditModal = (tx: Transaction) => {
+    setEditingTransaction(tx);
+    setTransactionType(tx.type);
     setModalOpen(true);
   };
   
@@ -47,7 +64,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onAddTransact
 
       <div className="space-y-3">
         {customer.transactions.length > 0 ? customer.transactions.map(tx => (
-          <div key={tx.id} className="bg-white p-3 rounded-lg shadow-sm flex justify-between items-start">
+          <div key={tx.id} className="bg-white p-3 rounded-lg shadow-sm flex justify-between items-start group">
             <div className="flex-grow">
                {tx.items && tx.items.length > 0 ? (
                  <div className="space-y-1">
@@ -63,9 +80,18 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onAddTransact
                )}
               <p className="text-xs text-slate-400 mt-1">{formatDate(tx.date)}</p>
             </div>
-            <p className={`font-bold text-right pl-4 ${tx.type === TransactionType.GAVE ? 'text-danger' : 'text-success'}`}>
-              {tx.type === TransactionType.GAVE ? '-' : '+'} {formatCurrency(tx.amount)}
-            </p>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => handleOpenEditModal(tx)}
+                className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-primary hover:bg-slate-50 rounded-full transition-all"
+                title="Edit Transaction"
+              >
+                <PencilIcon className="w-4 h-4" />
+              </button>
+              <p className={`font-bold text-right pl-1 ${tx.type === TransactionType.GAVE ? 'text-danger' : 'text-success'}`}>
+                {tx.type === TransactionType.GAVE ? '-' : '+'} {formatCurrency(tx.amount)}
+              </p>
+            </div>
           </div>
         )) : (
             <div className="text-center py-10 text-slate-500">
@@ -94,6 +120,8 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onAddTransact
         onClose={() => setModalOpen(false)}
         transactionType={transactionType}
         onAddTransaction={(transaction) => onAddTransaction(customer.id, transaction)}
+        onEditTransaction={(tx) => onEditTransaction(customer.id, tx)}
+        transactionToEdit={editingTransaction}
         allItems={allItems}
         onAddItem={onAddItem}
       />
