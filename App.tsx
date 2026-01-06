@@ -154,6 +154,56 @@ const App: React.FC = () => {
     }
   };
 
+  const handleExport = () => {
+    const data = {
+      version: '4.5',
+      user: currentUser,
+      exportedAt: new Date().toISOString(),
+      customers,
+      items
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `backup_${currentUser}_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target?.result as string);
+        
+        // Simple validation
+        if (!json.customers || !Array.isArray(json.customers)) {
+          throw new Error("Invalid backup file: Missing customers data.");
+        }
+
+        if (confirm("This will overwrite your current device data with the file content. Continue?")) {
+          setCustomers(json.customers);
+          if (json.items && Array.isArray(json.items)) {
+            setItems(json.items);
+          }
+          alert("Backup restored successfully! Syncing to cloud...");
+        }
+      } catch (err) {
+        alert("Error importing file: " + (err instanceof Error ? err.message : "Unknown error"));
+      }
+      // Reset input so the same file can be uploaded again if needed
+      event.target.value = '';
+    };
+    reader.readAsText(file);
+  };
+
   const handleAddCustomer = (name: string, phone: string) => {
     const newCustomer: Customer = { id: crypto.randomUUID(), name, phone, transactions: [] };
     setCustomers(prev => [...prev, newCustomer]);
@@ -231,7 +281,7 @@ const App: React.FC = () => {
               {activeView === 'customers' && <CustomerList customers={customers} onSelectCustomer={setSelectedCustomerId} onAddCustomer={handleAddCustomer} />}
               {activeView === 'items' && <ItemsList items={items} onAddItem={handleAddItem} onEditItem={handleEditItem} onDeleteItem={handleDeleteItem} onAddMultipleItems={handleAddMultipleItems} />}
               {activeView === 'settings' && <SettingsPage 
-                onExport={() => {}} onImport={() => {}} onLogout={handleLogout} 
+                onExport={handleExport} onImport={handleImport} onLogout={handleLogout} 
                 currentUser={currentUser} onInstallClick={handleInstallClick}
                 isInstallable={!!deferredPrompt} isInstalled={isInstalled} isSyncing={isSyncing}
               />}
