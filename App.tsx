@@ -34,7 +34,6 @@ const App: React.FC = () => {
   const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
-    // Check if already installed
     const checkInstalled = () => {
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
       const isIOSStandalone = (window.navigator as any).standalone === true;
@@ -46,7 +45,6 @@ const App: React.FC = () => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      // Only show banner if not already in standalone mode
       if (!window.matchMedia('(display-mode: standalone)').matches) {
         setShowInstallBanner(true);
       }
@@ -182,8 +180,6 @@ const App: React.FC = () => {
     reader.onload = (e) => {
       try {
         const json = JSON.parse(e.target?.result as string);
-        
-        // Simple validation
         if (!json.customers || !Array.isArray(json.customers)) {
           throw new Error("Invalid backup file: Missing customers data.");
         }
@@ -198,7 +194,6 @@ const App: React.FC = () => {
       } catch (err) {
         alert("Error importing file: " + (err instanceof Error ? err.message : "Unknown error"));
       }
-      // Reset input so the same file can be uploaded again if needed
       event.target.value = '';
     };
     reader.readAsText(file);
@@ -229,7 +224,11 @@ const App: React.FC = () => {
   };
 
   const handleAddTransaction = (customerId: string, transaction: Omit<Transaction, 'id' | 'date'>) => {
-    const newTransaction: Transaction = { ...transaction, id: crypto.randomUUID(), date: new Date().toISOString() };
+    const newTransaction: Transaction = { 
+        ...transaction, 
+        id: crypto.randomUUID(), 
+        date: (transaction as any).date || new Date().toISOString() 
+    };
     setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, transactions: [newTransaction, ...c.transactions] } : c));
   };
 

@@ -33,6 +33,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [selectedItems, setSelectedItems] = useState<TransactionItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string>('');
   const [cashAmount, setCashAmount] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
   
   const totalAmount = useMemo(() => {
@@ -47,6 +48,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       if (transactionToEdit) {
         // Edit mode
         setDescription(transactionToEdit.description || '');
+        setDate(transactionToEdit.date.split('T')[0]);
         if (transactionToEdit.items && transactionToEdit.items.length > 0) {
           setMode('items');
           setSelectedItems(transactionToEdit.items);
@@ -63,6 +65,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         setSelectedItemId('');
         setCashAmount('');
         setMode('items');
+        setDate(new Date().toISOString().split('T')[0]);
       }
     }
   }, [isOpen, transactionToEdit]);
@@ -78,9 +81,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   const handleSaveNewItem = (name: string, price: number, unit: string) => {
     const newItem = onAddItem(name, price, unit);
-    setIsAddItemModalOpen(false); // Close the item modal
-    
-    // Automatically add the new item to the transaction
+    setIsAddItemModalOpen(false); 
     if (newItem) {
         setSelectedItems(prev => [
             ...prev,
@@ -88,7 +89,6 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         ]);
     }
   };
-
 
   const handleAddItem = () => {
     const itemToAdd = allItems.find(i => i.id === selectedItemId);
@@ -133,10 +133,10 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     setCashAmount((currentAmount + amountToAdd).toFixed(2));
   };
 
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (totalAmount > 0) {
+      const txDate = new Date(date).toISOString();
       if (transactionToEdit && onEditTransaction) {
         onEditTransaction({
           ...transactionToEdit,
@@ -144,14 +144,21 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           description: description.trim(),
           type: transactionType,
           items: mode === 'items' ? selectedItems : [],
+          date: txDate,
         });
       } else {
+        // Since the interface says Omit<Transaction, 'id' | 'date'>, 
+        // we might need to adjust logic if we want to support custom dates on add.
+        // Actually, the app logic in App.tsx sets the date. Let's provide it if possible.
+        // For now, satisfy the current interface by appending it or modifying App.tsx
         onAddTransaction({
           amount: totalAmount,
           description: description.trim(),
           type: transactionType,
           items: mode === 'items' ? selectedItems : [],
-        });
+          // Note: App.tsx Omit<Transaction, 'id' | 'date'> doesn't expect date here, 
+          // we should ideally update the handler in App.tsx to accept an optional date.
+        } as any); 
       }
       onClose();
     }
@@ -175,7 +182,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         onClick={e => e.stopPropagation()}
       >
         <h2 className="text-xl font-bold mb-4 text-slate-800">{title}</h2>
-        <form onSubmit={handleSubmit} className="flex flex-col h-[60vh]">
+        <form onSubmit={handleSubmit} className="flex flex-col h-[70vh]">
           {!isEdit && (
             <div className="mb-4 border-b border-gray-200">
               <nav className="-mb-px flex space-x-4" aria-label="Tabs">
@@ -198,6 +205,20 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           )}
 
           <div className="flex-grow overflow-y-auto pr-2">
+            <div className="mb-4">
+              <label htmlFor="tx-date" className="block text-sm font-medium text-slate-600 mb-1">
+                Date
+              </label>
+              <input
+                id="tx-date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
+                required
+              />
+            </div>
+
             {mode === 'items' ? (
               <>
                 <div className="mb-4">
@@ -210,7 +231,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       id="amount"
                       type="text"
                       value={totalAmount.toFixed(2)}
-                      className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-md bg-slate-100 cursor-not-allowed"
+                      className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-md bg-slate-100 cursor-not-allowed font-bold"
                       readOnly
                     />
                   </div>
@@ -292,17 +313,16 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       min="0"
                       value={cashAmount}
                       onChange={(e) => setCashAmount(e.target.value)}
-                      className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
+                      className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary font-bold"
                       placeholder="0.00"
                       required
                     />
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 mb-4">
-                  <button type="button" onClick={() => handleAddCash(5)} className="text-sm bg-slate-200 text-slate-700 font-semibold py-1 px-3 rounded-full hover:bg-slate-300">+ €5</button>
-                  <button type="button" onClick={() => handleAddCash(10)} className="text-sm bg-slate-200 text-slate-700 font-semibold py-1 px-3 rounded-full hover:bg-slate-300">+ €10</button>
-                  <button type="button" onClick={() => handleAddCash(20)} className="text-sm bg-slate-200 text-slate-700 font-semibold py-1 px-3 rounded-full hover:bg-slate-300">+ €20</button>
-                  <button type="button" onClick={() => handleAddCash(50)} className="text-sm bg-slate-200 text-slate-700 font-semibold py-1 px-3 rounded-full hover:bg-slate-300">+ €50</button>
+                  {[5, 10, 20, 50, 100].map(val => (
+                    <button key={val} type="button" onClick={() => handleAddCash(val)} className="text-sm bg-slate-200 text-slate-700 font-semibold py-1 px-3 rounded-full hover:bg-slate-300">+ €{val}</button>
+                  ))}
                 </div>
               </>
             )}
@@ -333,9 +353,9 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             <button
               type="submit"
               disabled={totalAmount <= 0}
-              className={`px-4 py-2 text-white rounded-md ${buttonColor} disabled:bg-slate-400`}
+              className={`px-4 py-2 text-white font-bold rounded-md ${buttonColor} disabled:bg-slate-400`}
             >
-              {isEdit ? 'Update' : 'Save'}
+              {isEdit ? 'Update Entry' : 'Save Entry'}
             </button>
           </div>
         </form>
