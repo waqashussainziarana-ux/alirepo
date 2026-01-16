@@ -204,6 +204,10 @@ const App: React.FC = () => {
     setCustomers(prev => [...prev, newCustomer]);
   };
 
+  const handleEditCustomer = (id: string, name: string, phone: string) => {
+    setCustomers(prev => prev.map(c => c.id === id ? { ...c, name, phone } : c));
+  };
+
   const handleDeleteCustomer = (customerId: string) => {
     setCustomers(prev => prev.filter(c => c.id !== customerId));
     if (selectedCustomerId === customerId) {
@@ -297,6 +301,7 @@ const App: React.FC = () => {
                   customers={customers} 
                   onSelectCustomer={setSelectedCustomerId} 
                   onAddCustomer={handleAddCustomer} 
+                  onEditCustomer={handleEditCustomer}
                   onDeleteCustomer={handleDeleteCustomer}
                 />
               )}

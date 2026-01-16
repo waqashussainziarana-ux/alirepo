@@ -6,9 +6,11 @@ import { calculateBalance, formatCurrency } from '../utils/helpers';
 import AllTransactionsList from './AllTransactionsList';
 import { PlusIcon } from './icons/PlusIcon';
 import AddCustomerModal from './AddCustomerModal';
+import EditCustomerModal from './EditCustomerModal';
 import { SearchIcon } from './icons/SearchIcon';
 import { SortIcon } from './icons/SortIcon';
 import { TrashIcon } from './icons/TrashIcon';
+import { PencilIcon } from './icons/PencilIcon';
 import ConfirmationModal from './ConfirmationModal';
 
 
@@ -16,10 +18,16 @@ interface CustomerListProps {
   customers: Customer[];
   onSelectCustomer: (id: string) => void;
   onAddCustomer: (name: string, phone: string) => void;
+  onEditCustomer: (id: string, name: string, phone: string) => void;
   onDeleteCustomer: (id: string) => void;
 }
 
-const CustomerListItem: React.FC<{ customer: Customer; onSelect: () => void; onDelete: (e: React.MouseEvent) => void }> = ({ customer, onSelect, onDelete }) => {
+const CustomerListItem: React.FC<{ 
+  customer: Customer; 
+  onSelect: () => void; 
+  onEdit: (e: React.MouseEvent) => void;
+  onDelete: (e: React.MouseEvent) => void 
+}> = ({ customer, onSelect, onEdit, onDelete }) => {
   const balance = calculateBalance(customer);
 
   const balanceColor = balance > 0 ? 'text-success' : balance < 0 ? 'text-danger' : 'text-slate-500';
@@ -34,25 +42,35 @@ const CustomerListItem: React.FC<{ customer: Customer; onSelect: () => void; onD
         <p className="font-semibold text-slate-800">{customer.name}</p>
         <p className="text-sm text-slate-500">{customer.phone}</p>
       </div>
-      <div className="flex items-center gap-4">
-        <div className="text-right">
+      <div className="flex items-center gap-2">
+        <div className="text-right mr-2">
           <p className={`font-bold ${balanceColor}`}>{formatCurrency(Math.abs(balance))}</p>
           <p className={`text-xs ${balanceColor}`}>{balanceText}</p>
         </div>
-        <button
-          onClick={onDelete}
-          className="p-2 text-slate-300 hover:text-danger hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
-          title="Delete Customer"
-        >
-          <TrashIcon className="w-5 h-5" />
-        </button>
+        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={onEdit}
+            className="p-2 text-slate-400 hover:text-primary hover:bg-blue-50 rounded-full transition-colors"
+            title="Edit Customer"
+          >
+            <PencilIcon className="w-5 h-5" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-2 text-slate-400 hover:text-danger hover:bg-red-50 rounded-full transition-colors"
+            title="Delete Customer"
+          >
+            <TrashIcon className="w-5 h-5" />
+          </button>
+        </div>
       </div>
     </li>
   );
 };
 
-const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer, onAddCustomer, onDeleteCustomer }) => {
+const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer, onAddCustomer, onEditCustomer, onDeleteCustomer }) => {
   const [isAddCustomerModalOpen, setAddCustomerModalOpen] = useState(false);
+  const [customerToEdit, setCustomerToEdit] = useState<Customer | null>(null);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [view, setView] = useState<'customers' | 'transactions'>('customers');
   const [searchTerm, setSearchTerm] = useState('');
@@ -81,6 +99,11 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
     return result;
   }, [customers, searchTerm, sortOrder]);
 
+  const handleEditRequest = (e: React.MouseEvent, customer: Customer) => {
+    e.stopPropagation();
+    setCustomerToEdit(customer);
+  };
+
   const handleDeleteRequest = (e: React.MouseEvent, customer: Customer) => {
     e.stopPropagation();
     setCustomerToDelete(customer);
@@ -90,6 +113,13 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
     if (customerToDelete) {
       onDeleteCustomer(customerToDelete.id);
       setCustomerToDelete(null);
+    }
+  };
+
+  const handleConfirmEdit = (name: string, phone: string) => {
+    if (customerToEdit) {
+      onEditCustomer(customerToEdit.id, name, phone);
+      setCustomerToEdit(null);
     }
   };
 
@@ -161,6 +191,7 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
                   key={customer.id} 
                   customer={customer} 
                   onSelect={() => onSelectCustomer(customer.id)}
+                  onEdit={(e) => handleEditRequest(e, customer)}
                   onDelete={(e) => handleDeleteRequest(e, customer)}
                 />
               ))}
@@ -183,6 +214,13 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
         isOpen={isAddCustomerModalOpen}
         onClose={() => setAddCustomerModalOpen(false)}
         onAddCustomer={onAddCustomer}
+      />
+
+      <EditCustomerModal
+        isOpen={!!customerToEdit}
+        customer={customerToEdit}
+        onClose={() => setCustomerToEdit(null)}
+        onEditCustomer={handleConfirmEdit}
       />
 
       <ConfirmationModal
