@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Customer } from '../types';
 import DashboardSummary from './DashboardSummary';
@@ -7,15 +8,18 @@ import { PlusIcon } from './icons/PlusIcon';
 import AddCustomerModal from './AddCustomerModal';
 import { SearchIcon } from './icons/SearchIcon';
 import { SortIcon } from './icons/SortIcon';
+import { TrashIcon } from './icons/TrashIcon';
+import ConfirmationModal from './ConfirmationModal';
 
 
 interface CustomerListProps {
   customers: Customer[];
   onSelectCustomer: (id: string) => void;
   onAddCustomer: (name: string, phone: string) => void;
+  onDeleteCustomer: (id: string) => void;
 }
 
-const CustomerListItem: React.FC<{ customer: Customer; onSelect: () => void }> = ({ customer, onSelect }) => {
+const CustomerListItem: React.FC<{ customer: Customer; onSelect: () => void; onDelete: (e: React.MouseEvent) => void }> = ({ customer, onSelect, onDelete }) => {
   const balance = calculateBalance(customer);
 
   const balanceColor = balance > 0 ? 'text-success' : balance < 0 ? 'text-danger' : 'text-slate-500';
@@ -24,22 +28,32 @@ const CustomerListItem: React.FC<{ customer: Customer; onSelect: () => void }> =
   return (
     <li
       onClick={onSelect}
-      className="flex justify-between items-center p-4 border-b border-slate-200 hover:bg-slate-50 cursor-pointer"
+      className="flex justify-between items-center p-4 border-b border-slate-200 hover:bg-slate-50 cursor-pointer group"
     >
-      <div>
+      <div className="flex-grow">
         <p className="font-semibold text-slate-800">{customer.name}</p>
         <p className="text-sm text-slate-500">{customer.phone}</p>
       </div>
-      <div className="text-right">
-        <p className={`font-bold ${balanceColor}`}>{formatCurrency(Math.abs(balance))}</p>
-        <p className={`text-xs ${balanceColor}`}>{balanceText}</p>
+      <div className="flex items-center gap-4">
+        <div className="text-right">
+          <p className={`font-bold ${balanceColor}`}>{formatCurrency(Math.abs(balance))}</p>
+          <p className={`text-xs ${balanceColor}`}>{balanceText}</p>
+        </div>
+        <button
+          onClick={onDelete}
+          className="p-2 text-slate-300 hover:text-danger hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+          title="Delete Customer"
+        >
+          <TrashIcon className="w-5 h-5" />
+        </button>
       </div>
     </li>
   );
 };
 
-const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer, onAddCustomer }) => {
+const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer, onAddCustomer, onDeleteCustomer }) => {
   const [isAddCustomerModalOpen, setAddCustomerModalOpen] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [view, setView] = useState<'customers' | 'transactions'>('customers');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState('balance-desc');
@@ -66,6 +80,18 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
 
     return result;
   }, [customers, searchTerm, sortOrder]);
+
+  const handleDeleteRequest = (e: React.MouseEvent, customer: Customer) => {
+    e.stopPropagation();
+    setCustomerToDelete(customer);
+  };
+
+  const handleConfirmDelete = () => {
+    if (customerToDelete) {
+      onDeleteCustomer(customerToDelete.id);
+      setCustomerToDelete(null);
+    }
+  };
 
   return (
     <div>
@@ -134,7 +160,8 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
                 <CustomerListItem 
                   key={customer.id} 
                   customer={customer} 
-                  onSelect={() => onSelectCustomer(customer.id)} 
+                  onSelect={() => onSelectCustomer(customer.id)}
+                  onDelete={(e) => handleDeleteRequest(e, customer)}
                 />
               ))}
             </ul>
@@ -156,6 +183,19 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
         isOpen={isAddCustomerModalOpen}
         onClose={() => setAddCustomerModalOpen(false)}
         onAddCustomer={onAddCustomer}
+      />
+
+      <ConfirmationModal
+        isOpen={!!customerToDelete}
+        onClose={() => setCustomerToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Customer"
+        message={
+          <>
+            Are you sure you want to delete <strong>{customerToDelete?.name}</strong>? 
+            All transaction history will be permanently removed.
+          </>
+        }
       />
     </div>
   );

@@ -204,6 +204,13 @@ const App: React.FC = () => {
     setCustomers(prev => [...prev, newCustomer]);
   };
 
+  const handleDeleteCustomer = (customerId: string) => {
+    setCustomers(prev => prev.filter(c => c.id !== customerId));
+    if (selectedCustomerId === customerId) {
+      setSelectedCustomerId(null);
+    }
+  };
+
   const handleAddItem = (name: string, price: number, unit: string): Item => {
     const newItem: Item = { id: crypto.randomUUID(), name, price, unit };
     setItems(prev => [...prev, newItem]);
@@ -236,6 +243,13 @@ const App: React.FC = () => {
     setCustomers(prev => prev.map(c => c.id === customerId ? {
       ...c,
       transactions: c.transactions.map(tx => tx.id === updatedTransaction.id ? updatedTransaction : tx)
+    } : c));
+  };
+
+  const handleDeleteTransaction = (customerId: string, transactionId: string) => {
+    setCustomers(prev => prev.map(c => c.id === customerId ? {
+      ...c,
+      transactions: c.transactions.filter(tx => tx.id !== transactionId)
     } : c));
   };
 
@@ -272,12 +286,20 @@ const App: React.FC = () => {
               customer={selectedCustomer} 
               onAddTransaction={handleAddTransaction}
               onEditTransaction={handleEditTransaction}
+              onDeleteTransaction={handleDeleteTransaction}
               allItems={items} 
               onAddItem={handleAddItem}
             />
           ) : (
             <>
-              {activeView === 'customers' && <CustomerList customers={customers} onSelectCustomer={setSelectedCustomerId} onAddCustomer={handleAddCustomer} />}
+              {activeView === 'customers' && (
+                <CustomerList 
+                  customers={customers} 
+                  onSelectCustomer={setSelectedCustomerId} 
+                  onAddCustomer={handleAddCustomer} 
+                  onDeleteCustomer={handleDeleteCustomer}
+                />
+              )}
               {activeView === 'items' && <ItemsList items={items} onAddItem={handleAddItem} onEditItem={handleEditItem} onDeleteItem={handleDeleteItem} onAddMultipleItems={handleAddMultipleItems} />}
               {activeView === 'settings' && <SettingsPage 
                 onExport={handleExport} onImport={handleImport} onLogout={handleLogout} 

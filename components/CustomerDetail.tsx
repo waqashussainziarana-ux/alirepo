@@ -5,11 +5,14 @@ import AddTransactionModal from './AddTransactionModal';
 import { calculateBalance, formatCurrency } from '../utils/helpers';
 import { PencilIcon } from './icons/PencilIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
+import { TrashIcon } from './icons/TrashIcon';
+import ConfirmationModal from './ConfirmationModal';
 
 interface CustomerDetailProps {
   customer: Customer;
   onAddTransaction: (customerId: string, transaction: Omit<Transaction, 'id' | 'date'>) => void;
   onEditTransaction: (customerId: string, transaction: Transaction) => void;
+  onDeleteTransaction: (customerId: string, transactionId: string) => void;
   allItems: Item[];
   onAddItem: (name: string, price: number, unit: string) => Item;
 }
@@ -18,12 +21,14 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
   customer, 
   onAddTransaction, 
   onEditTransaction,
+  onDeleteTransaction,
   allItems, 
   onAddItem 
 }) => {
   const [isModalOpen, setModalOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<TransactionType>(TransactionType.GAVE);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
 
   const balance = calculateBalance(customer);
 
@@ -37,6 +42,13 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
     setEditingTransaction(tx);
     setTransactionType(tx.type);
     setModalOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (transactionToDelete) {
+      onDeleteTransaction(customer.id, transactionToDelete.id);
+      setTransactionToDelete(null);
+    }
   };
   
   const formatDate = (dateString: string) => {
@@ -153,14 +165,25 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
               <p className={`font-black text-lg ${tx.type === TransactionType.GAVE ? 'text-danger' : 'text-success'}`}>
                 {tx.type === TransactionType.GAVE ? '-' : '+'} {formatCurrency(tx.amount)}
               </p>
-              <button 
-                onClick={() => handleOpenEditModal(tx)}
-                className="opacity-0 group-hover:opacity-100 flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-primary transition-all uppercase"
-                title="Edit Transaction"
-              >
-                <PencilIcon className="w-3 h-3" />
-                Edit
-              </button>
+              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button 
+                  onClick={() => handleOpenEditModal(tx)}
+                  className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-primary transition-all uppercase"
+                  title="Edit Transaction"
+                >
+                  <PencilIcon className="w-3 h-3" />
+                  Edit
+                </button>
+                <span className="text-slate-200">|</span>
+                <button 
+                  onClick={() => setTransactionToDelete(tx)}
+                  className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-danger transition-all uppercase"
+                  title="Delete Transaction"
+                >
+                  <TrashIcon className="w-3 h-3" />
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
         )) : (
@@ -194,6 +217,14 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
         transactionToEdit={editingTransaction}
         allItems={allItems}
         onAddItem={onAddItem}
+      />
+
+      <ConfirmationModal
+        isOpen={!!transactionToDelete}
+        onClose={() => setTransactionToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Transaction"
+        message="Are you sure you want to delete this entry? This action cannot be undone."
       />
     </div>
   );
