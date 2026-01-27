@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Customer } from '../types';
 import { calculateBalance, formatCurrency } from '../utils/helpers';
@@ -7,7 +8,7 @@ interface DashboardSummaryProps {
 }
 
 const DashboardSummary: React.FC<DashboardSummaryProps> = ({ customers }) => {
-  const { totalToGet, totalToGive } = customers.reduce(
+  const totals = customers.reduce(
     (acc, customer) => {
       const balance = calculateBalance(customer);
       if (balance > 0) {
@@ -19,6 +20,10 @@ const DashboardSummary: React.FC<DashboardSummaryProps> = ({ customers }) => {
     },
     { totalToGet: 0, totalToGive: 0 }
   );
+
+  // Rounding final totals to ensure clean display
+  const totalToGet = Math.round((totals.totalToGet + Number.EPSILON) * 100) / 100;
+  const totalToGive = Math.round((totals.totalToGive + Number.EPSILON) * 100) / 100;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">

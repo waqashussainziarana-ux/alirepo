@@ -1,13 +1,24 @@
+
 import { Customer, TransactionType } from '../types';
 
+/**
+ * Calculates the net balance for a customer.
+ * Rounds to 2 decimal places to prevent floating point errors.
+ */
 export const calculateBalance = (customer: Customer): number => {
-  return customer.transactions.reduce((acc, tx) => {
+  const balance = customer.transactions.reduce((acc, tx) => {
+    const amount = Number(tx.amount) || 0;
     if (tx.type === TransactionType.GAVE) {
-      return acc + tx.amount;
+      // Giving money increases the amount they owe you
+      return acc + amount;
     } else {
-      return acc - tx.amount;
+      // Receiving money decreases the amount they owe you
+      return acc - amount;
     }
   }, 0);
+  
+  // Robust rounding to 2 decimal places
+  return Math.round((balance + Number.EPSILON) * 100) / 100;
 };
 
 export const formatCurrency = (amount: number) => {

@@ -122,7 +122,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
         <div className="flex justify-between items-center mb-4">
           <div>
             <p className="text-sm text-slate-500 font-bold uppercase tracking-tight">Net Balance</p>
-            <p className={`text-3xl font-black ${balance >= 0 ? 'text-success' : 'text-danger'}`}>
+            <p className={`text-3xl font-black ${balance > 0 ? 'text-success' : balance < 0 ? 'text-danger' : 'text-slate-400'}`}>
               {formatCurrency(Math.abs(balance))}
             </p>
           </div>
@@ -134,8 +134,8 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
             PDF Report
           </button>
         </div>
-        <div className={`text-sm font-black px-3 py-1 rounded-full inline-block ${balance >= 0 ? 'bg-green-100 text-success' : 'bg-red-100 text-danger'}`}>
-          {balance >= 0 ? 'YOU WILL GET' : 'YOU WILL GIVE'}
+        <div className={`text-sm font-black px-3 py-1 rounded-full inline-block ${balance > 0 ? 'bg-green-100 text-success' : balance < 0 ? 'bg-red-100 text-danger' : 'bg-slate-100 text-slate-500'}`}>
+          {balance > 0 ? 'YOU WILL GET' : balance < 0 ? 'YOU WILL GIVE' : 'SETTLED'}
         </div>
       </div>
 
@@ -163,7 +163,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
             </div>
             <div className="flex flex-col items-end gap-2">
               <p className={`font-black text-lg ${tx.type === TransactionType.GAVE ? 'text-danger' : 'text-success'}`}>
-                {tx.type === TransactionType.GAVE ? '-' : '+'} {formatCurrency(tx.amount)}
+                {tx.type === TransactionType.GAVE ? '+' : '-'} {formatCurrency(tx.amount)}
               </p>
               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button 
@@ -215,6 +215,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
         onAddTransaction={(transaction) => onAddTransaction(customer.id, transaction)}
         onEditTransaction={(tx) => onEditTransaction(customer.id, tx)}
         transactionToEdit={editingTransaction}
+        // Fixed: Use 'allItems' prop instead of non-existent 'items'
         allItems={allItems}
         onAddItem={onAddItem}
       />

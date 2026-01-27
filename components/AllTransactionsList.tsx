@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Customer, TransactionType } from '../types';
 import { formatCurrency } from '../utils/helpers';
@@ -204,7 +205,7 @@ const AllTransactionsList: React.FC<AllTransactionsListProps> = ({ customers, on
                 <p className="text-xs text-slate-400 mt-1">{formatDate(tx.date)}</p>
               </div>
               <p className={`font-bold text-lg ${tx.type === TransactionType.GAVE ? 'text-danger' : 'text-success'}`}>
-                {tx.type === TransactionType.GAVE ? '-' : '+'} {formatCurrency(tx.amount)}
+                {tx.type === TransactionType.GAVE ? '+' : '-'} {formatCurrency(tx.amount)}
               </p>
             </li>
           ))}
