@@ -46,7 +46,6 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       if (transactionToEdit) {
-        // Edit mode
         setDescription(transactionToEdit.description || '');
         setDate(transactionToEdit.date.split('T')[0]);
         if (transactionToEdit.items && transactionToEdit.items.length > 0) {
@@ -59,7 +58,6 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           setSelectedItems([]);
         }
       } else {
-        // Add mode
         setDescription('');
         setSelectedItems([]);
         setSelectedItemId('');
@@ -147,17 +145,11 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           date: txDate,
         });
       } else {
-        // Since the interface says Omit<Transaction, 'id' | 'date'>, 
-        // we might need to adjust logic if we want to support custom dates on add.
-        // Actually, the app logic in App.tsx sets the date. Let's provide it if possible.
-        // For now, satisfy the current interface by appending it or modifying App.tsx
         onAddTransaction({
           amount: totalAmount,
           description: description.trim(),
           type: transactionType,
           items: mode === 'items' ? selectedItems : [],
-          // Note: App.tsx Omit<Transaction, 'id' | 'date'> doesn't expect date here, 
-          // we should ideally update the handler in App.tsx to accept an optional date.
         } as any); 
       }
       onClose();
@@ -174,87 +166,91 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   return (
     <>
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-end sm:items-center"
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm m-4"
+        className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-sm sm:max-w-md max-h-[90vh] overflow-hidden flex flex-col transition-all transform animate-slide-up sm:animate-fade-in"
         onClick={e => e.stopPropagation()}
       >
-        <h2 className="text-xl font-bold mb-4 text-slate-800">{title}</h2>
-        <form onSubmit={handleSubmit} className="flex flex-col h-[70vh]">
+        {/* Header */}
+        <div className="px-6 pt-6 pb-2 border-b border-slate-50">
+          <h2 className="text-xl font-black text-slate-800">{title}</h2>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
+          {/* Tabs */}
           {!isEdit && (
-            <div className="mb-4 border-b border-gray-200">
-              <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+            <div className="px-6 pt-2">
+              <nav className="flex space-x-6 border-b border-slate-100" aria-label="Tabs">
                 <button
                   type="button"
                   onClick={() => setMode('items')}
-                  className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-t-md ${mode === 'items' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`flex items-center gap-2 pb-3 pt-2 text-xs font-black uppercase tracking-widest transition-all relative ${mode === 'items' ? 'text-primary' : 'text-slate-400'}`}
                 >
-                  <CubeIcon className="w-5 h-5"/> Items
+                  <CubeIcon className="w-4 h-4"/> 
+                  Items
+                  {mode === 'items' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full"></div>}
                 </button>
                 <button
                   type="button"
                   onClick={() => setMode('cash')}
-                  className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-t-md ${mode === 'cash' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`flex items-center gap-2 pb-3 pt-2 text-xs font-black uppercase tracking-widest transition-all relative ${mode === 'cash' ? 'text-primary' : 'text-slate-400'}`}
                 >
-                  <CashIcon className="w-5 h-5"/> Cash
+                  <CashIcon className="w-4 h-4"/> 
+                  Cash
+                  {mode === 'cash' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full"></div>}
                 </button>
               </nav>
             </div>
           )}
 
-          <div className="flex-grow overflow-y-auto pr-2">
-            <div className="mb-4">
-              <label htmlFor="tx-date" className="block text-sm font-medium text-slate-600 mb-1">
-                Date
-              </label>
-              <input
-                id="tx-date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
-                required
-              />
+          {/* Scrollable Content */}
+          <div className="flex-grow overflow-y-auto px-6 py-4 space-y-5">
+            {/* Header Data: Stacked on mobile to prevent overlap */}
+            <div className="flex flex-col sm:flex-row gap-4 sm:items-start">
+              <div className="flex-1">
+                <label htmlFor="tx-date" className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">
+                  Date
+                </label>
+                <input
+                  id="tx-date"
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-xs font-bold"
+                  required
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">
+                  Total Amount
+                </label>
+                <div className="text-lg sm:text-xl font-black text-slate-800 py-1 truncate">
+                  {formatCurrency(totalAmount)}
+                </div>
+              </div>
             </div>
 
             {mode === 'items' ? (
-              <>
-                <div className="mb-4">
-                  <label htmlFor="amount" className="block text-sm font-medium text-slate-600 mb-1">
-                    Total Amount
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">€</span>
-                    <input
-                      id="amount"
-                      type="text"
-                      value={totalAmount.toFixed(2)}
-                      className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-md bg-slate-100 cursor-not-allowed font-bold"
-                      readOnly
-                    />
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <label htmlFor="items" className="block text-sm font-medium text-slate-600 mb-1">
-                    {isEdit ? 'Current Items' : 'Add Items'}
-                  </label>
-                  {!isEdit && (
+              <div className="space-y-4">
+                {!isEdit && (
+                  <div>
+                    <label htmlFor="items" className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">
+                      Select Item to Add
+                    </label>
                     <div className="flex gap-2">
                       <select
                         id="items"
                         value={selectedItemId}
                         onChange={(e) => handleItemSelection(e.target.value)}
-                        className="flex-grow px-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
+                        className="flex-grow min-w-0 px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-xs font-semibold appearance-none cursor-pointer"
                       >
-                        <option value="">Select an item</option>
-                        <option value="--add-new--" className="font-bold text-primary bg-blue-50">-- Add New Item --</option>
+                        <option value="">Choose item...</option>
+                        <option value="--add-new--" className="font-bold text-primary">+ Create New Item</option>
                         {allItems.map(item => (
                           <option key={item.id} value={item.id}>
-                            {item.name} ({formatCurrency(item.price)}
-                            {item.unit ? ` / ${item.unit}` : ''})
+                            {item.name} ({formatCurrency(item.price)})
                           </option>
                         ))}
                       </select>
@@ -262,50 +258,71 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         type="button"
                         onClick={handleAddItem}
                         disabled={!selectedItemId}
-                        className="px-3 py-2 bg-primary text-white rounded-md hover:bg-primary-dark disabled:bg-slate-300"
+                        className="flex-shrink-0 p-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:bg-slate-200 disabled:text-slate-400 shadow-sm transition-all"
                       >
                         <PlusIcon className="w-5 h-5"/>
                       </button>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
                 
-                <div className="space-y-2 mb-4">
-                  {selectedItems.map(item => (
-                    <div key={item.itemId} className="flex items-center justify-between p-2 bg-slate-50 rounded-md">
-                      <div>
-                        <p className="font-medium text-sm">{item.name}</p>
-                        <p className="text-xs text-slate-500">
-                          {formatCurrency(item.price)}{' '}
-                          {item.unit ? `/ ${item.unit}` : 'each'}
-                        </p>
+                {selectedItems.length > 0 && (
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1 border-t border-slate-50 pt-2">
+                    {selectedItems.map(item => (
+                      <div key={item.itemId} className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl group">
+                        <div className="truncate pr-2">
+                          <p className="font-bold text-slate-800 text-[11px] truncate">{item.name}</p>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase">
+                            {formatCurrency(item.price)} {item.unit ? `/ ${item.unit}` : ''}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                            <button 
+                              type="button" 
+                              onClick={() => handleQuantityChange(item.itemId, item.quantity - 1)}
+                              className="px-1.5 py-0.5 text-slate-400 hover:bg-slate-50 active:text-primary transition-colors font-bold text-sm"
+                            >
+                              -
+                            </button>
+                            <input 
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => handleQuantityChange(item.itemId, parseInt(e.target.value, 10) || 1)}
+                              className="w-8 py-0.5 text-center text-[10px] font-black border-x border-slate-100 focus:outline-none bg-white"
+                            />
+                            <button 
+                              type="button" 
+                              onClick={() => handleQuantityChange(item.itemId, item.quantity + 1)}
+                              className="px-1.5 py-0.5 text-slate-400 hover:bg-slate-50 active:text-primary transition-colors font-bold text-sm"
+                            >
+                              +
+                            </button>
+                          </div>
+                          {!isEdit && (
+                            <button 
+                              type="button" 
+                              onClick={() => handleRemoveItem(item.itemId)} 
+                              className="text-slate-300 hover:text-danger p-1 transition-colors"
+                            >
+                              <PlusIcon className="w-3.5 h-3.5 rotate-45" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => handleQuantityChange(item.itemId, parseInt(e.target.value, 10))}
-                          className="w-16 p-1 border border-slate-300 rounded-md text-center"
-                        />
-                        {!isEdit && (
-                          <button type="button" onClick={() => handleRemoveItem(item.itemId)} className="text-red-500 hover:text-red-700 text-xs font-bold px-1">
-                            &times;
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
+                    ))}
+                  </div>
+                )}
+              </div>
             ) : (
-              <>
-                <div className="mb-4">
-                  <label htmlFor="cash-amount" className="block text-sm font-medium text-slate-600 mb-1">
-                    Amount
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="cash-amount" className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">
+                    Enter Amount
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">€</span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400 text-lg">€</span>
                     <input
                       id="cash-amount"
                       type="number"
@@ -313,49 +330,58 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       min="0"
                       value={cashAmount}
                       onChange={(e) => setCashAmount(e.target.value)}
-                      className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary font-bold"
+                      className="w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary font-black text-xl text-slate-800"
                       placeholder="0.00"
                       required
+                      autoFocus
                     />
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {[5, 10, 20, 50, 100].map(val => (
-                    <button key={val} type="button" onClick={() => handleAddCash(val)} className="text-sm bg-slate-200 text-slate-700 font-semibold py-1 px-3 rounded-full hover:bg-slate-300">+ €{val}</button>
+                <div className="flex flex-wrap gap-2">
+                  {[10, 20, 50, 100].map(val => (
+                    <button 
+                      key={val} 
+                      type="button" 
+                      onClick={() => handleAddCash(val)} 
+                      className="text-[9px] font-black uppercase tracking-wider bg-white border border-slate-200 text-slate-600 py-1.5 px-3 rounded-full hover:bg-primary/5 hover:border-primary transition-all active:scale-95 shadow-sm"
+                    >
+                      + €{val}
+                    </button>
                   ))}
                 </div>
-              </>
+              </div>
             )}
 
-            <div className="mb-6">
-              <label htmlFor="description" className="block text-sm font-medium text-slate-600 mb-1">
-                Description (Optional)
+            <div>
+              <label htmlFor="description" className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">
+                Notes (Optional)
               </label>
-              <input
+              <textarea
                 id="description"
-                type="text"
+                rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
-                placeholder="e.g., for goods, salary"
+                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-1 focus:ring-primary focus:border-primary text-xs font-semibold resize-none"
+                placeholder="Write a small note..."
               />
             </div>
           </div>
           
-          <div className="flex-shrink-0 flex justify-end gap-3 pt-4 border-t">
+          {/* Footer Actions */}
+          <div className="flex-shrink-0 p-4 bg-slate-50/50 border-t border-slate-100 flex gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-slate-200 text-slate-800 rounded-md hover:bg-slate-300"
+              className="flex-grow py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={totalAmount <= 0}
-              className={`px-4 py-2 text-white font-bold rounded-md ${buttonColor} disabled:bg-slate-400`}
+              className={`flex-[2] py-3 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg transition-all active:scale-95 ${buttonColor} disabled:bg-slate-200 disabled:shadow-none disabled:text-slate-400`}
             >
-              {isEdit ? 'Update Entry' : 'Save Entry'}
+              {isEdit ? 'Update' : 'Save'}
             </button>
           </div>
         </form>
@@ -367,6 +393,23 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         onClose={() => setIsAddItemModalOpen(false)}
         onAddItem={handleSaveNewItem}
       />
+
+    <style>{`
+      @keyframes slide-up {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+      }
+      @keyframes fade-in {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      .animate-slide-up {
+        animation: slide-up 0.3s ease-out forwards;
+      }
+      .animate-fade-in {
+        animation: fade-in 0.2s ease-out forwards;
+      }
+    `}</style>
     </>
   );
 };
