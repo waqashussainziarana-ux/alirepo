@@ -77,7 +77,7 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [view, setView] = useState<'customers' | 'transactions'>('customers');
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortOrder, setSortOrder] = useState('balance-desc');
+  const [sortOrder, setSortOrder] = useState('activity-desc'); // Set default to Recent Activity
 
   const sortedAndFilteredCustomers = useMemo(() => {
     let result = customers.filter(customer =>
@@ -87,6 +87,15 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
 
     result.sort((a, b) => {
       switch (sortOrder) {
+        case 'activity-desc': {
+          const lastTxA = a.transactions.length > 0 
+            ? Math.max(...a.transactions.map(t => new Date(t.date).getTime())) 
+            : 0;
+          const lastTxB = b.transactions.length > 0 
+            ? Math.max(...b.transactions.map(t => new Date(t.date).getTime())) 
+            : 0;
+          return lastTxB - lastTxA;
+        }
         case 'name-asc':
           return a.name.localeCompare(b.name);
         case 'name-desc':
@@ -133,6 +142,7 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
             onChange={e => setSortOrder(e.target.value)}
             className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-lg appearance-none text-xs cursor-pointer"
           >
+            <option value="activity-desc">Recent Activity</option>
             <option value="balance-desc">High Balance</option>
             <option value="balance-asc">Low Balance</option>
             <option value="name-asc">Name A-Z</option>
