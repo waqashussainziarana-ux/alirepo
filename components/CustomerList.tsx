@@ -30,39 +30,40 @@ const CustomerListItem: React.FC<{
 }> = ({ customer, onSelect, onEdit, onDelete }) => {
   const balance = calculateBalance(customer);
 
-  // Negative balance = You gave more = You will get (Red)
-  // Positive balance = You got more = You will give (Green)
-  const balanceColor = balance < 0 ? 'text-danger' : balance > 0 ? 'text-success' : 'text-slate-500';
+  const balanceColor = balance < 0 ? 'text-danger' : balance > 0 ? 'text-success' : 'text-slate-400';
   const balanceText = balance < 0 ? 'To get' : balance > 0 ? 'To give' : 'Settled';
 
   return (
     <li
       onClick={onSelect}
-      className="flex justify-between items-center p-4 border-b border-slate-200 hover:bg-slate-50 cursor-pointer group"
+      className="flex justify-between items-center p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer group transition-colors"
     >
-      <div className="flex-grow truncate">
-        <p className="font-semibold text-slate-800 truncate">{customer.name}</p>
-        <p className="text-sm text-slate-500">{customer.phone}</p>
+      <div className="flex-grow truncate pr-2">
+        <p className="font-bold text-slate-800 truncate text-sm">{customer.name}</p>
+        <p className="text-[10px] text-slate-400 font-medium">{customer.phone}</p>
       </div>
-      <div className="flex items-center gap-1">
-        <div className="text-right mr-1">
-          <p className={`font-bold ${balanceColor}`}>{formatCurrency(Math.abs(balance))}</p>
-          <p className={`text-[10px] leading-tight ${balanceColor}`}>{balanceText}</p>
+      
+      <div className="flex items-center gap-2">
+        <div className="text-right flex flex-col items-end">
+          <p className={`font-black text-sm ${balanceColor}`}>{formatCurrency(Math.abs(balance))}</p>
+          <p className={`text-[9px] font-bold uppercase tracking-tighter ${balanceColor}`}>{balanceText}</p>
         </div>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        
+        {/* Tiny Actions Group */}
+        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={onEdit}
-            className="p-1 text-slate-400 hover:text-primary hover:bg-blue-50 rounded-full transition-colors"
-            title="Edit Customer"
+            className="p-1.5 text-slate-300 hover:text-primary hover:bg-blue-50 rounded-md"
+            title="Edit"
           >
-            <PencilIcon className="w-4 h-4" />
+            <PencilIcon className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={onDelete}
-            className="p-1 text-slate-400 hover:text-danger hover:bg-red-50 rounded-full transition-colors"
-            title="Delete Customer"
+            className="p-1.5 text-slate-300 hover:text-danger hover:bg-red-50 rounded-md"
+            title="Delete"
           >
-            <TrashIcon className="w-4 h-4" />
+            <TrashIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -91,10 +92,8 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
         case 'name-desc':
           return b.name.localeCompare(a.name);
         case 'balance-asc': 
-          // Smallest number first (highest negative = most to get)
           return calculateBalance(a) - calculateBalance(b);
         case 'balance-desc': 
-          // Largest number first (highest positive = most to give)
           return calculateBalance(b) - calculateBalance(a);
         default:
           return 0;
@@ -114,83 +113,58 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
     setCustomerToDelete(customer);
   };
 
-  const handleConfirmDelete = () => {
-    if (customerToDelete) {
-      onDeleteCustomer(customerToDelete.id);
-      setCustomerToDelete(null);
-    }
-  };
-
-  const handleConfirmEdit = (name: string, phone: string) => {
-    if (customerToEdit) {
-      onEditCustomer(customerToEdit.id, name, phone);
-      setCustomerToEdit(null);
-    }
-  };
-
   return (
     <div>
       <div className="flex flex-col md:flex-row gap-2 mb-4">
         <div className="relative flex-grow">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search by name or phone..."
+            placeholder="Search customers..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary text-sm"
-            aria-label="Search Customers"
+            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-xs"
           />
         </div>
         <div className="relative">
-          <SortIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <SortIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
           <select
             value={sortOrder}
             onChange={e => setSortOrder(e.target.value)}
-            className="w-full md:w-auto pl-9 pr-8 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary appearance-none bg-white cursor-pointer text-sm"
-            aria-label="Sort Customers"
+            className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-lg appearance-none text-xs cursor-pointer"
           >
             <option value="balance-desc">High Balance</option>
             <option value="balance-asc">Low Balance</option>
             <option value="name-asc">Name A-Z</option>
-            <option value="name-desc">Name Z-A</option>
           </select>
         </div>
       </div>
 
-
       <DashboardSummary customers={customers} />
       
-      <div className="mb-4 border-b border-gray-200">
-          <nav className="flex space-x-4" aria-label="Tabs">
-              <button
-                  onClick={() => setView('customers')}
-                  className={`px-3 py-2 font-medium text-sm rounded-t-md ${view === 'customers' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                  Customers
-              </button>
-              <button
-                  onClick={() => setView('transactions')}
-                  className={`px-3 py-2 font-medium text-sm rounded-t-md ${view === 'transactions' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                  All Transactions
-              </button>
-          </nav>
+      <div className="flex gap-2 mb-4">
+        <button
+            onClick={() => setView('customers')}
+            className={`flex-grow py-2 text-xs font-black rounded-lg transition-all ${view === 'customers' ? 'bg-primary text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+        >
+            CUSTOMERS
+        </button>
+        <button
+            onClick={() => setView('transactions')}
+            className={`flex-grow py-2 text-xs font-black rounded-lg transition-all ${view === 'transactions' ? 'bg-primary text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+        >
+            RECENT ACTIVITY
+        </button>
       </div>
 
       {view === 'customers' && (
-        <>
-          {customers.length === 0 ? (
-            <div className="text-center py-10">
-              <p className="text-slate-500 text-sm">No customers yet.</p>
-              <p className="text-slate-400 text-xs">Click the '+' button to add your first customer.</p>
-            </div>
-          ) : sortedAndFilteredCustomers.length === 0 ? (
-            <div className="text-center py-10">
-              <p className="text-slate-500 text-sm">No customers found.</p>
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+          {sortedAndFilteredCustomers.length === 0 ? (
+            <div className="text-center py-12 px-4">
+              <p className="text-slate-400 text-xs italic">No matching customers found.</p>
             </div>
           ) : (
-            <ul className="bg-white rounded-lg shadow-sm border border-slate-100 overflow-hidden">
+            <ul>
               {sortedAndFilteredCustomers.map(customer => (
                 <CustomerListItem 
                   key={customer.id} 
@@ -202,44 +176,21 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
               ))}
             </ul>
           )}
-        </>
+        </div>
       )}
 
       {view === 'transactions' && <AllTransactionsList customers={customers} onSelectCustomer={onSelectCustomer} />}
 
       <button
         onClick={() => setAddCustomerModalOpen(true)}
-        className="fixed bottom-20 right-6 lg:right-[calc(50%-15rem)] bg-primary hover:bg-primary-dark text-white rounded-full p-4 shadow-lg flex items-center justify-center transition-transform transform hover:scale-105 z-20"
-        aria-label="Add New Customer"
+        className="fixed bottom-20 right-6 bg-primary text-white rounded-full p-4 shadow-xl hover:scale-110 active:scale-95 transition-all z-20"
       >
         <PlusIcon className="w-8 h-8" />
       </button>
 
-      <AddCustomerModal
-        isOpen={isAddCustomerModalOpen}
-        onClose={() => setAddCustomerModalOpen(false)}
-        onAddCustomer={onAddCustomer}
-      />
-
-      <EditCustomerModal
-        isOpen={!!customerToEdit}
-        customer={customerToEdit}
-        onClose={() => setCustomerToEdit(null)}
-        onEditCustomer={handleConfirmEdit}
-      />
-
-      <ConfirmationModal
-        isOpen={!!customerToDelete}
-        onClose={() => setCustomerToDelete(null)}
-        onConfirm={handleConfirmDelete}
-        title="Delete Customer"
-        message={
-          <>
-            Are you sure you want to delete <strong>{customerToDelete?.name}</strong>? 
-            All transaction history will be permanently removed.
-          </>
-        }
-      />
+      <AddCustomerModal isOpen={isAddCustomerModalOpen} onClose={() => setAddCustomerModalOpen(false)} onAddCustomer={onAddCustomer} />
+      <EditCustomerModal isOpen={!!customerToEdit} customer={customerToEdit} onClose={() => setCustomerToEdit(null)} onEditCustomer={(n, p) => onEditCustomer(customerToEdit!.id, n, p)} />
+      <ConfirmationModal isOpen={!!customerToDelete} onClose={() => setCustomerToDelete(null)} onConfirm={() => { onDeleteCustomer(customerToDelete!.id); setCustomerToDelete(null); }} title="Delete Customer" message="Permanently delete this customer and all their transaction history?" />
     </div>
   );
 };
