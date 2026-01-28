@@ -30,8 +30,10 @@ const CustomerListItem: React.FC<{
 }> = ({ customer, onSelect, onEdit, onDelete }) => {
   const balance = calculateBalance(customer);
 
-  const balanceColor = balance > 0 ? 'text-success' : balance < 0 ? 'text-danger' : 'text-slate-500';
-  const balanceText = balance > 0 ? 'To get' : balance < 0 ? 'To give' : 'Settled';
+  // Negative balance = You gave more = You will get (Red)
+  // Positive balance = You got more = You will give (Green)
+  const balanceColor = balance < 0 ? 'text-danger' : balance > 0 ? 'text-success' : 'text-slate-500';
+  const balanceText = balance < 0 ? 'To get' : balance > 0 ? 'To give' : 'Settled';
 
   return (
     <li
@@ -88,11 +90,14 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
           return a.name.localeCompare(b.name);
         case 'name-desc':
           return b.name.localeCompare(a.name);
-        case 'balance-asc': // Lowest balance (highest to give) first
+        case 'balance-asc': 
+          // Smallest number first (highest negative = most to get)
           return calculateBalance(a) - calculateBalance(b);
-        case 'balance-desc': // Highest balance (highest to get) first
-        default:
+        case 'balance-desc': 
+          // Largest number first (highest positive = most to give)
           return calculateBalance(b) - calculateBalance(a);
+        default:
+          return 0;
       }
     });
 

@@ -81,7 +81,8 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
     doc.text(`Phone: ${customer.phone}`, 14, 54);
     
     // Balance Summary
-    const balanceText = balance >= 0 ? 'Net Balance (To Get)' : 'Net Balance (To Give)';
+    // Note: With new logic, balance < 0 means "You will get"
+    const balanceText = balance < 0 ? 'Net Balance (To Get)' : 'Net Balance (To Give)';
     doc.setFont("helvetica", "bold");
     doc.text(`${balanceText}: ${formatCurrency(Math.abs(balance))}`, 14, 64);
     doc.setFont("helvetica", "normal");
@@ -93,7 +94,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
         ? tx.items.map(i => `${i.name} (x${i.quantity})`).join(', ') 
         : tx.description || 'Transaction',
       tx.type === TransactionType.GAVE ? 'GAVE' : 'GOT',
-      formatCurrency(tx.amount)
+      tx.type === TransactionType.GAVE ? `-${formatCurrency(tx.amount)}` : `+${formatCurrency(tx.amount)}`
     ]);
 
     (doc as any).autoTable({
@@ -122,7 +123,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
         <div className="flex justify-between items-center mb-4">
           <div>
             <p className="text-sm text-slate-500 font-bold uppercase tracking-tight">Net Balance</p>
-            <p className={`text-3xl font-black ${balance > 0 ? 'text-success' : balance < 0 ? 'text-danger' : 'text-slate-400'}`}>
+            <p className={`text-3xl font-black ${balance < 0 ? 'text-danger' : balance > 0 ? 'text-success' : 'text-slate-400'}`}>
               {formatCurrency(Math.abs(balance))}
             </p>
           </div>
@@ -134,8 +135,8 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
             PDF Report
           </button>
         </div>
-        <div className={`text-sm font-black px-3 py-1 rounded-full inline-block ${balance > 0 ? 'bg-green-100 text-success' : balance < 0 ? 'bg-red-100 text-danger' : 'bg-slate-100 text-slate-500'}`}>
-          {balance > 0 ? 'YOU WILL GET' : balance < 0 ? 'YOU WILL GIVE' : 'SETTLED'}
+        <div className={`text-sm font-black px-3 py-1 rounded-full inline-block ${balance < 0 ? 'bg-red-100 text-danger' : balance > 0 ? 'bg-green-100 text-success' : 'bg-slate-100 text-slate-500'}`}>
+          {balance < 0 ? 'YOU WILL GET' : balance > 0 ? 'YOU WILL GIVE' : 'SETTLED'}
         </div>
       </div>
 
@@ -163,7 +164,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
             </div>
             <div className="flex flex-col items-end gap-2">
               <p className={`font-black text-lg ${tx.type === TransactionType.GAVE ? 'text-danger' : 'text-success'}`}>
-                {tx.type === TransactionType.GAVE ? '+' : '-'} {formatCurrency(tx.amount)}
+                {tx.type === TransactionType.GAVE ? '-' : '+'} {formatCurrency(tx.amount)}
               </p>
               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button 
@@ -215,7 +216,6 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
         onAddTransaction={(transaction) => onAddTransaction(customer.id, transaction)}
         onEditTransaction={(tx) => onEditTransaction(customer.id, tx)}
         transactionToEdit={editingTransaction}
-        // Fixed: Use 'allItems' prop instead of non-existent 'items'
         allItems={allItems}
         onAddItem={onAddItem}
       />

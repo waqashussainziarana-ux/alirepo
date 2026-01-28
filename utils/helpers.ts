@@ -3,17 +3,19 @@ import { Customer, TransactionType } from '../types';
 
 /**
  * Calculates the net balance for a customer.
- * Rounds to 2 decimal places to prevent floating point errors.
+ * Logic: GOT (+) and GAVE (-)
+ * A negative balance means you have given more than you got (Customer owes you).
+ * A positive balance means you have received more than you gave (You owe customer).
  */
 export const calculateBalance = (customer: Customer): number => {
   const balance = customer.transactions.reduce((acc, tx) => {
     const amount = Number(tx.amount) || 0;
     if (tx.type === TransactionType.GAVE) {
-      // Giving money increases the amount they owe you
-      return acc + amount;
-    } else {
-      // Receiving money decreases the amount they owe you
+      // Giving money is now treated as a negative cash flow entry (-)
       return acc - amount;
+    } else {
+      // Receiving money is treated as a positive cash flow entry (+)
+      return acc + amount;
     }
   }, 0);
   

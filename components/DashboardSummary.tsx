@@ -11,10 +11,13 @@ const DashboardSummary: React.FC<DashboardSummaryProps> = ({ customers }) => {
   const totals = customers.reduce(
     (acc, customer) => {
       const balance = calculateBalance(customer);
-      if (balance > 0) {
-        acc.totalToGet += balance;
-      } else if (balance < 0) {
-        acc.totalToGive += Math.abs(balance);
+      // Logic with flip:
+      // balance < 0: Gave more than Got (Customer owes you - "You will get")
+      // balance > 0: Got more than Gave (You owe customer - "You will give")
+      if (balance < 0) {
+        acc.totalToGet += Math.abs(balance);
+      } else if (balance > 0) {
+        acc.totalToGive += balance;
       }
       return acc;
     },
@@ -27,13 +30,13 @@ const DashboardSummary: React.FC<DashboardSummaryProps> = ({ customers }) => {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-      <div className="bg-green-100 border-l-4 border-success p-4 rounded-r-lg shadow">
-        <p className="text-sm text-green-800">You will get</p>
-        <p className="text-2xl font-bold text-success">{formatCurrency(totalToGet)}</p>
+      <div className="bg-red-50 border-l-4 border-danger p-4 rounded-r-lg shadow-sm">
+        <p className="text-xs font-bold text-red-800 uppercase tracking-tight">You will get</p>
+        <p className="text-2xl font-black text-danger">{formatCurrency(totalToGet)}</p>
       </div>
-      <div className="bg-red-100 border-l-4 border-danger p-4 rounded-r-lg shadow">
-        <p className="text-sm text-red-800">You will give</p>
-        <p className="text-2xl font-bold text-danger">{formatCurrency(totalToGive)}</p>
+      <div className="bg-green-50 border-l-4 border-success p-4 rounded-r-lg shadow-sm">
+        <p className="text-xs font-bold text-green-800 uppercase tracking-tight">You will give</p>
+        <p className="text-2xl font-black text-success">{formatCurrency(totalToGive)}</p>
       </div>
     </div>
   );
