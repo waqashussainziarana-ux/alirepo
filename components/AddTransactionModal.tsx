@@ -170,34 +170,34 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-sm sm:max-w-md max-h-[90vh] overflow-hidden flex flex-col transition-all transform animate-slide-up sm:animate-fade-in"
+        className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-sm sm:max-w-md max-h-[92vh] overflow-hidden flex flex-col transition-all transform animate-slide-up sm:animate-fade-in"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 pt-6 pb-2 border-b border-slate-50">
+        <div className="px-5 pt-5 pb-2 border-b border-slate-50">
           <h2 className="text-xl font-black text-slate-800">{title}</h2>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
           {/* Tabs */}
           {!isEdit && (
-            <div className="px-6 pt-2">
-              <nav className="flex space-x-6 border-b border-slate-100" aria-label="Tabs">
+            <div className="px-5 pt-1">
+              <nav className="flex space-x-5 border-b border-slate-100" aria-label="Tabs">
                 <button
                   type="button"
                   onClick={() => setMode('items')}
-                  className={`flex items-center gap-2 pb-3 pt-2 text-xs font-black uppercase tracking-widest transition-all relative ${mode === 'items' ? 'text-primary' : 'text-slate-400'}`}
+                  className={`flex items-center gap-2 pb-2.5 pt-2 text-[10px] font-black uppercase tracking-widest transition-all relative ${mode === 'items' ? 'text-primary' : 'text-slate-400'}`}
                 >
-                  <CubeIcon className="w-4 h-4"/> 
+                  <CubeIcon className="w-3.5 h-3.5"/> 
                   Items
                   {mode === 'items' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full"></div>}
                 </button>
                 <button
                   type="button"
                   onClick={() => setMode('cash')}
-                  className={`flex items-center gap-2 pb-3 pt-2 text-xs font-black uppercase tracking-widest transition-all relative ${mode === 'cash' ? 'text-primary' : 'text-slate-400'}`}
+                  className={`flex items-center gap-2 pb-2.5 pt-2 text-[10px] font-black uppercase tracking-widest transition-all relative ${mode === 'cash' ? 'text-primary' : 'text-slate-400'}`}
                 >
-                  <CashIcon className="w-4 h-4"/> 
+                  <CashIcon className="w-3.5 h-3.5"/> 
                   Cash
                   {mode === 'cash' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full"></div>}
                 </button>
@@ -206,11 +206,11 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           )}
 
           {/* Scrollable Content */}
-          <div className="flex-grow overflow-y-auto px-6 py-4 space-y-5">
-            {/* Header Data: Stacked on mobile to prevent overlap */}
-            <div className="flex flex-col sm:flex-row gap-4 sm:items-start">
-              <div className="flex-1">
-                <label htmlFor="tx-date" className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">
+          <div className="flex-grow overflow-y-auto px-5 py-3 space-y-4">
+            {/* Header Data: Grid-based layout to prevent collision/proportion issues */}
+            <div className="grid grid-cols-12 gap-3 items-end">
+              <div className="col-span-5">
+                <label htmlFor="tx-date" className="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">
                   Date
                 </label>
                 <input
@@ -218,33 +218,33 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-xs font-bold"
+                  className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-[11px] font-bold text-slate-700"
                   required
                 />
               </div>
-              <div className="flex-1">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">
+              <div className="col-span-7 pl-1">
+                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">
                   Total Amount
                 </label>
-                <div className="text-lg sm:text-xl font-black text-slate-800 py-1 truncate">
+                <div className="text-base sm:text-xl font-black text-slate-800 pb-1.5 truncate leading-tight">
                   {formatCurrency(totalAmount)}
                 </div>
               </div>
             </div>
 
             {mode === 'items' ? (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {!isEdit && (
                   <div>
-                    <label htmlFor="items" className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">
-                      Select Item to Add
+                    <label htmlFor="items" className="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1.5">
+                      Select Item
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1.5">
                       <select
                         id="items"
                         value={selectedItemId}
                         onChange={(e) => handleItemSelection(e.target.value)}
-                        className="flex-grow min-w-0 px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-xs font-semibold appearance-none cursor-pointer"
+                        className="flex-grow min-w-0 px-2.5 py-2 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-[11px] font-semibold appearance-none cursor-pointer"
                       >
                         <option value="">Choose item...</option>
                         <option value="--add-new--" className="font-bold text-primary">+ Create New Item</option>
@@ -260,28 +260,28 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         disabled={!selectedItemId}
                         className="flex-shrink-0 p-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:bg-slate-200 disabled:text-slate-400 shadow-sm transition-all"
                       >
-                        <PlusIcon className="w-5 h-5"/>
+                        <PlusIcon className="w-4.5 h-4.5"/>
                       </button>
                     </div>
                   </div>
                 )}
                 
                 {selectedItems.length > 0 && (
-                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1 border-t border-slate-50 pt-2">
+                  <div className="space-y-2 max-h-36 overflow-y-auto pr-1 border-t border-slate-50 pt-3">
                     {selectedItems.map(item => (
-                      <div key={item.itemId} className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl group">
+                      <div key={item.itemId} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-100 rounded-lg group">
                         <div className="truncate pr-2">
-                          <p className="font-bold text-slate-800 text-[11px] truncate">{item.name}</p>
+                          <p className="font-bold text-slate-800 text-[10px] truncate">{item.name}</p>
                           <p className="text-[9px] text-slate-400 font-bold uppercase">
                             {formatCurrency(item.price)} {item.unit ? `/ ${item.unit}` : ''}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex items-center bg-white border border-slate-200 rounded-md overflow-hidden">
                             <button 
                               type="button" 
                               onClick={() => handleQuantityChange(item.itemId, item.quantity - 1)}
-                              className="px-1.5 py-0.5 text-slate-400 hover:bg-slate-50 active:text-primary transition-colors font-bold text-sm"
+                              className="px-1.5 py-0.5 text-slate-400 hover:bg-slate-50 active:text-primary transition-colors font-bold text-xs"
                             >
                               -
                             </button>
@@ -290,12 +290,12 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                               min="1"
                               value={item.quantity}
                               onChange={(e) => handleQuantityChange(item.itemId, parseInt(e.target.value, 10) || 1)}
-                              className="w-8 py-0.5 text-center text-[10px] font-black border-x border-slate-100 focus:outline-none bg-white"
+                              className="w-7 py-0.5 text-center text-[10px] font-black border-x border-slate-100 focus:outline-none bg-white"
                             />
                             <button 
                               type="button" 
                               onClick={() => handleQuantityChange(item.itemId, item.quantity + 1)}
-                              className="px-1.5 py-0.5 text-slate-400 hover:bg-slate-50 active:text-primary transition-colors font-bold text-sm"
+                              className="px-1.5 py-0.5 text-slate-400 hover:bg-slate-50 active:text-primary transition-colors font-bold text-xs"
                             >
                               +
                             </button>
@@ -304,9 +304,9 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             <button 
                               type="button" 
                               onClick={() => handleRemoveItem(item.itemId)} 
-                              className="text-slate-300 hover:text-danger p-1 transition-colors"
+                              className="text-slate-300 hover:text-danger p-0.5 transition-colors"
                             >
-                              <PlusIcon className="w-3.5 h-3.5 rotate-45" />
+                              <PlusIcon className="w-3 h-3 rotate-45" />
                             </button>
                           )}
                         </div>
@@ -316,13 +316,13 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 )}
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div>
-                  <label htmlFor="cash-amount" className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">
+                  <label htmlFor="cash-amount" className="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1.5">
                     Enter Amount
                   </label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400 text-lg">€</span>
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-black text-slate-400 text-base">€</span>
                     <input
                       id="cash-amount"
                       type="number"
@@ -330,20 +330,20 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                       min="0"
                       value={cashAmount}
                       onChange={(e) => setCashAmount(e.target.value)}
-                      className="w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary font-black text-xl text-slate-800"
+                      className="w-full pl-8 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary font-black text-lg text-slate-800"
                       placeholder="0.00"
                       required
                       autoFocus
                     />
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   {[10, 20, 50, 100].map(val => (
                     <button 
                       key={val} 
                       type="button" 
                       onClick={() => handleAddCash(val)} 
-                      className="text-[9px] font-black uppercase tracking-wider bg-white border border-slate-200 text-slate-600 py-1.5 px-3 rounded-full hover:bg-primary/5 hover:border-primary transition-all active:scale-95 shadow-sm"
+                      className="text-[9px] font-black uppercase tracking-wider bg-white border border-slate-200 text-slate-600 py-1 px-2.5 rounded-full hover:bg-primary/5 hover:border-primary transition-all active:scale-95"
                     >
                       + €{val}
                     </button>
@@ -353,26 +353,26 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             )}
 
             <div>
-              <label htmlFor="description" className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">
-                Notes (Optional)
+              <label htmlFor="description" className="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1.5">
+                Notes
               </label>
               <textarea
                 id="description"
                 rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-1 focus:ring-primary focus:border-primary text-xs font-semibold resize-none"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-1 focus:ring-primary focus:border-primary text-[11px] font-semibold resize-none"
                 placeholder="Write a small note..."
               />
             </div>
           </div>
           
           {/* Footer Actions */}
-          <div className="flex-shrink-0 p-4 bg-slate-50/50 border-t border-slate-100 flex gap-3">
+          <div className="flex-shrink-0 p-5 bg-slate-50/50 border-t border-slate-100 flex gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="flex-grow py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors"
+              className="flex-grow py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600"
             >
               Cancel
             </button>
@@ -381,7 +381,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               disabled={totalAmount <= 0}
               className={`flex-[2] py-3 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg transition-all active:scale-95 ${buttonColor} disabled:bg-slate-200 disabled:shadow-none disabled:text-slate-400`}
             >
-              {isEdit ? 'Update' : 'Save'}
+              {isEdit ? 'Update' : 'Save Entry'}
             </button>
           </div>
         </form>
