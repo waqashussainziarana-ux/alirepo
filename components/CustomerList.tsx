@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Customer } from '../types';
 import DashboardSummary from './DashboardSummary';
-import { calculateBalance, formatCurrency } from '../utils/helpers';
+import { calculateBalance, calculateCustomerTotals, formatCurrency } from '../utils/helpers';
 import AllTransactionsList from './AllTransactionsList';
 import { PlusIcon } from './icons/PlusIcon';
 import AddCustomerModal from './AddCustomerModal';
@@ -29,6 +29,7 @@ const CustomerListItem: React.FC<{
   onDelete: (e: React.MouseEvent) => void 
 }> = ({ customer, onSelect, onEdit, onDelete }) => {
   const balance = calculateBalance(customer);
+  const { totalGave, totalGot } = calculateCustomerTotals(customer);
 
   const balanceColor = balance < 0 ? 'text-danger' : balance > 0 ? 'text-success' : 'text-slate-400';
   const balanceText = balance < 0 ? 'To get' : balance > 0 ? 'To give' : 'Settled';
@@ -40,7 +41,15 @@ const CustomerListItem: React.FC<{
     >
       <div className="flex-grow truncate pr-2">
         <p className="font-bold text-slate-800 truncate text-sm">{customer.name}</p>
-        <p className="text-[10px] text-slate-400 font-medium">{customer.phone}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <p className="text-[9px] text-slate-400 font-medium">{customer.phone}</p>
+          <span className="text-[8px] text-slate-200">|</span>
+          <p className="text-[9px] font-bold">
+            <span className="text-success">Paid: {formatCurrency(totalGot)}</span>
+            <span className="mx-1 text-slate-300">•</span>
+            <span className="text-danger">Pending: {formatCurrency(totalGave)}</span>
+          </p>
+        </div>
       </div>
       
       <div className="flex items-center gap-2">
@@ -77,7 +86,7 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [view, setView] = useState<'customers' | 'transactions'>('customers');
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortOrder, setSortOrder] = useState('activity-desc'); // Set default to Recent Activity
+  const [sortOrder, setSortOrder] = useState('activity-desc');
 
   const sortedAndFilteredCustomers = useMemo(() => {
     let result = customers.filter(customer =>
