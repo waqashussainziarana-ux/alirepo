@@ -2,9 +2,10 @@
 import React, { useState } from 'react';
 import { Customer, Transaction, TransactionType, Item } from '../types';
 import AddTransactionModal from './AddTransactionModal';
-import { calculateBalance, calculateCustomerTotals, formatCurrency } from '../utils/helpers';
+import { calculateBalance, calculateCustomerTotals, formatCurrency, downloadCSV } from '../utils/helpers';
 import { PencilIcon } from './icons/PencilIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
+import { TableIcon } from './icons/TableIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import ConfirmationModal from './ConfirmationModal';
 
@@ -52,12 +53,31 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
     }
   };
   
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-GB', {
+  const formatDateTime = (dateString: string) => {
+    const d = new Date(dateString);
+    const date = d.toLocaleDateString('en-GB', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
     });
+    const time = d.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    return `${date} • ${time}`;
+  };
+
+  const handleDownloadCSV = () => {
+    const headers = ['Date', 'Description', 'Items', 'Type', 'Amount (EUR)'];
+    const rows = [...customer.transactions].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(tx => [
+      new Date(tx.date).toLocaleString(),
+      tx.description || '',
+      tx.items?.map(i => `${i.name} x${i.quantity}`).join('; ') || '',
+      tx.type,
+      (tx.type === TransactionType.GAVE ? -tx.amount : tx.amount).toString()
+    ]);
+    downloadCSV(headers, rows, `${customer.name.replace(/\s+/g, '_')}_Transactions`);
   };
 
   const handleDownloadPDF = () => {
@@ -71,7 +91,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
     
     doc.setFontSize(12);
     doc.setTextColor(100);
-    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 28);
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
     
     // Customer Info
     doc.setFontSize(14);
@@ -91,7 +111,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
     
     // Transactions Table
     const tableData = [...customer.transactions].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(tx => [
-      formatDate(tx.date),
+      formatDateTime(tx.date),
       tx.items && tx.items.length > 0 
         ? tx.items.map(i => `${i.name} (x${i.quantity})`).join(', ') 
         : tx.description || 'Transaction',
@@ -101,7 +121,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
 
     (doc as any).autoTable({
       startY: 85,
-      head: [['Date', 'Description', 'Type', 'Amount']],
+      head: [['Date & Time', 'Description', 'Type', 'Amount']],
       body: tableData,
       theme: 'striped',
       headStyles: { fillColor: [37, 99, 235] },
@@ -133,13 +153,24 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
               {balance < 0 ? 'YOU WILL GET' : balance > 0 ? 'YOU WILL GIVE' : 'SETTLED'}
             </div>
           </div>
-          <button 
-            onClick={handleDownloadPDF}
-            className="p-2 bg-slate-50 hover:bg-primary/5 text-slate-400 hover:text-primary border border-slate-200 hover:border-primary/20 rounded-lg transition-all shadow-sm"
-            title="Download PDF"
-          >
-            <DownloadIcon className="w-5 h-5" />
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={handleDownloadCSV}
+              className="p-2 bg-slate-50 hover:bg-primary/5 text-slate-400 hover:text-primary border border-slate-200 hover:border-primary/20 rounded-lg transition-all shadow-sm flex flex-col items-center gap-1"
+              title="Download Excel/CSV"
+            >
+              <TableIcon className="w-5 h-5" />
+              <span className="text-[7px] font-black uppercase">CSV</span>
+            </button>
+            <button 
+              onClick={handleDownloadPDF}
+              className="p-2 bg-slate-50 hover:bg-primary/5 text-slate-400 hover:text-primary border border-slate-200 hover:border-primary/20 rounded-lg transition-all shadow-sm flex flex-col items-center gap-1"
+              title="Download PDF"
+            >
+              <DownloadIcon className="w-5 h-5" />
+              <span className="text-[7px] font-black uppercase">PDF</span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50">
@@ -170,7 +201,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
                 <p className="text-slate-800 font-bold">{tx.description || 'Transaction'}</p>
                )}
               <div className="flex items-center gap-2 mt-2">
-                <span className="text-[10px] text-slate-400 font-bold uppercase">{formatDate(tx.date)}</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase">{formatDateTime(tx.date)}</span>
                 <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${tx.type === TransactionType.GAVE ? 'bg-red-50 text-danger' : 'bg-green-50 text-success'}`}>
                     {tx.type}
                 </span>

@@ -1,13 +1,19 @@
 
 import React, { useState, useMemo } from 'react';
-import { Customer, TransactionType } from '../types';
-import { formatCurrency } from '../utils/helpers';
+import { Customer, TransactionType, Transaction } from '../types';
+import { formatCurrency, downloadCSV } from '../utils/helpers';
 import { SearchIcon } from './icons/SearchIcon';
 import { SortIcon } from './icons/SortIcon';
+import { TableIcon } from './icons/TableIcon';
 
 interface AllTransactionsListProps {
   customers: Customer[];
   onSelectCustomer: (id: string) => void;
+}
+
+interface ExtendedTransaction extends Transaction {
+  customerId: string;
+  customerName: string;
 }
 
 const AllTransactionsList: React.FC<AllTransactionsListProps> = ({ customers, onSelectCustomer }) => {
@@ -17,14 +23,19 @@ const AllTransactionsList: React.FC<AllTransactionsListProps> = ({ customers, on
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState('date-desc');
 
-  const allTransactions = useMemo(() => customers
-    .flatMap(customer =>
-      customer.transactions.map(tx => ({
-        ...tx,
-        customerId: customer.id,
-        customerName: customer.name,
-      }))
-    ), [customers]);
+  const allTransactions = useMemo(() => {
+    const list: ExtendedTransaction[] = [];
+    customers.forEach(customer => {
+      customer.transactions.forEach(tx => {
+        list.push({
+          ...tx,
+          customerId: customer.id,
+          customerName: customer.name,
+        });
+      });
+    });
+    return list;
+  }, [customers]);
 
   const filteredTransactions = useMemo(() => {
     const lowerSearchTerm = searchTerm.toLowerCase();
@@ -34,183 +45,193 @@ const AllTransactionsList: React.FC<AllTransactionsListProps> = ({ customers, on
         const searchMatch = !lowerSearchTerm ||
           tx.customerName.toLowerCase().includes(lowerSearchTerm) ||
           (tx.description && tx.description.toLowerCase().includes(lowerSearchTerm)) ||
-          tx.items.some(item => item.name.toLowerCase().includes(lowerSearchTerm));
+          tx.items?.some(item => item.name.toLowerCase().includes(lowerSearchTerm));
+        
         if (!searchMatch) return false;
 
-        // Date range filter using string comparison (YYYY-MM-DD)
         const txDateStr = tx.date.substring(0, 10);
-        if (startDate && txDateStr < startDate) {
-          return false;
-        }
-        if (endDate && txDateStr > endDate) {
-          return false;
-        }
+        if (startDate && txDateStr < startDate) return false;
+        if (endDate && txDateStr > endDate) return false;
 
-        // Transaction type filter
-        if (filterType !== 'ALL' && tx.type !== filterType) {
-          return false;
-        }
+        if (filterType !== 'ALL' && tx.type !== filterType) return false;
 
         return true;
       })
       .sort((a, b) => {
         switch (sortOrder) {
-          case 'amount-desc':
-            return b.amount - a.amount;
-          case 'amount-asc':
-            return a.amount - b.amount;
-          case 'date-desc':
-          default:
-            return new Date(b.date).getTime() - new Date(a.date).getTime();
+          case 'amount-desc': return b.amount - a.amount;
+          case 'amount-asc': return a.amount - b.amount;
+          case 'date-desc': return new Date(b.date).getTime() - new Date(a.date).getTime();
+          case 'date-asc': return new Date(a.date).getTime() - new Date(b.date).getTime();
+          default: return 0;
         }
       });
   }, [allTransactions, searchTerm, startDate, endDate, filterType, sortOrder]);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-GB', {
+  const handleExportCSV = () => {
+    const headers = ['Date', 'Customer', 'Description', 'Items', 'Type', 'Amount (EUR)'];
+    const rows = filteredTransactions.map(tx => [
+      new Date(tx.date).toLocaleString(),
+      tx.customerName,
+      tx.description || '',
+      tx.items?.map(i => `${i.name} x${i.quantity}`).join('; ') || '',
+      tx.type,
+      (tx.type === TransactionType.GAVE ? -tx.amount : tx.amount).toString()
+    ]);
+    downloadCSV(headers, rows, `Transaction_History_${new Date().toISOString().split('T')[0]}`);
+  };
+
+  const formatDateTime = (dateString: string) => {
+    const d = new Date(dateString);
+    const date = d.toLocaleDateString('en-GB', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
     });
+    const time = d.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    return `${date} • ${time}`;
   };
 
   if (allTransactions.length === 0) {
     return (
-      <div className="text-center py-10">
-        <p className="text-slate-500">No transactions recorded yet.</p>
+      <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-200">
+        <p className="text-slate-400 font-bold italic">No transactions recorded yet.</p>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="flex flex-col md:flex-row gap-2 mb-4">
-        <div className="relative flex-grow">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+    <div className="space-y-4">
+      {/* Search and Sort */}
+      <div className="flex flex-col gap-2">
+        <div className="relative">
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search by customer or description..."
+            placeholder="Search by customer or items..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
-            aria-label="Search Transactions"
+            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-primary text-xs"
           />
         </div>
         <div className="relative">
-          <SortIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+          <SortIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
           <select
             value={sortOrder}
             onChange={e => setSortOrder(e.target.value)}
-            className="w-full md:w-auto pl-10 pr-8 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary appearance-none bg-white cursor-pointer"
-            aria-label="Sort Transactions"
+            className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-lg appearance-none text-xs cursor-pointer"
           >
-            <option value="date-desc">Date: Newest First</option>
-            <option value="amount-desc">Amount: High to Low</option>
-            <option value="amount-asc">Amount: Low to High</option>
+            <option value="date-desc">Newest First</option>
+            <option value="date-asc">Oldest First</option>
+            <option value="amount-desc">Highest Amount</option>
+            <option value="amount-asc">Lowest Amount</option>
           </select>
         </div>
       </div>
 
-      <div className="bg-slate-50 p-3 rounded-lg mb-4 space-y-3 border border-slate-200">
+      {/* Advanced Filters */}
+      <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label htmlFor="start-date" className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
+            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">From</label>
             <input
               type="date"
-              id="start-date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="block w-full rounded-md border-slate-300 shadow-sm focus:border-primary focus:ring-primary text-sm p-2"
-              aria-label="Start Date Filter"
+              className="w-full p-2 bg-white border border-slate-200 rounded-md text-[10px] font-bold"
             />
           </div>
           <div>
-            <label htmlFor="end-date" className="block text-xs font-medium text-slate-600 mb-1">End Date</label>
+            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">To</label>
             <input
               type="date"
-              id="end-date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              min={startDate}
-              className="block w-full rounded-md border-slate-300 shadow-sm focus:border-primary focus:ring-primary text-sm p-2"
-              aria-label="End Date Filter"
+              className="w-full p-2 bg-white border border-slate-200 rounded-md text-[10px] font-bold"
             />
           </div>
         </div>
-        <div>
-          <fieldset>
-            <legend className="block text-xs font-medium text-slate-600 mb-2">Transaction Type</legend>
-            <div className="flex items-center justify-around">
-              <div className="flex items-center">
-                <input
-                  id="filter-all"
-                  name="filter-type"
-                  type="radio"
-                  checked={filterType === 'ALL'}
-                  onChange={() => setFilterType('ALL')}
-                  className="h-4 w-4 border-slate-300 text-primary focus:ring-primary"
-                />
-                <label htmlFor="filter-all" className="ml-2 block text-sm text-slate-800">
-                  All
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  id="filter-gave"
-                  name="filter-type"
-                  type="radio"
-                  checked={filterType === TransactionType.GAVE}
-                  onChange={() => setFilterType(TransactionType.GAVE)}
-                  className="h-4 w-4 border-slate-300 text-primary focus:ring-primary"
-                />
-                <label htmlFor="filter-gave" className="ml-2 block text-sm font-medium text-danger">
-                  You Gave
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  id="filter-got"
-                  name="filter-type"
-                  type="radio"
-                  checked={filterType === TransactionType.GOT}
-                  onChange={() => setFilterType(TransactionType.GOT)}
-                  className="h-4 w-4 border-slate-300 text-primary focus:ring-primary"
-                />
-                <label htmlFor="filter-got" className="ml-2 block text-sm font-medium text-success">
-                  You Got
-                </label>
-              </div>
-            </div>
-          </fieldset>
+
+        <div className="flex gap-2">
+          {['ALL', TransactionType.GAVE, TransactionType.GOT].map((type) => (
+            <button
+              key={type}
+              onClick={() => setFilterType(type as any)}
+              className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase tracking-tighter transition-all ${
+                filterType === type 
+                ? 'bg-primary text-white shadow-sm' 
+                : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              {type === 'ALL' ? 'Everything' : type === TransactionType.GAVE ? 'Gave' : 'Got'}
+            </button>
+          ))}
         </div>
+
+        <button 
+          onClick={handleExportCSV}
+          disabled={filteredTransactions.length === 0}
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-all text-[10px] font-black uppercase tracking-widest disabled:opacity-50 shadow-sm"
+        >
+          <TableIcon className="w-4 h-4" />
+          Export Filtered to CSV / Excel
+        </button>
+      </div>
+
+      {/* Transactions List */}
+      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+        {filteredTransactions.length === 0 ? (
+          <div className="p-10 text-center">
+            <p className="text-slate-400 text-xs italic">No matching transactions found.</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-50">
+            {filteredTransactions.map(tx => (
+              <li 
+                key={tx.id} 
+                className="p-4 hover:bg-slate-50 transition-colors cursor-pointer group"
+                onClick={() => onSelectCustomer(tx.customerId)}
+              >
+                <div className="flex justify-between items-start mb-1">
+                  <div>
+                    <h4 className="font-black text-slate-800 text-sm group-hover:text-primary transition-colors">
+                      {tx.customerName}
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">
+                      {tx.items && tx.items.length > 0 
+                        ? tx.items.map(i => `${i.name} (x${i.quantity})`).join(', ')
+                        : tx.description || 'General Entry'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`font-black text-sm ${tx.type === TransactionType.GAVE ? 'text-danger' : 'text-success'}`}>
+                      {tx.type === TransactionType.GAVE ? '-' : '+'} {formatCurrency(tx.amount)}
+                    </p>
+                    <p className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full inline-block mt-1 ${
+                      tx.type === TransactionType.GAVE ? 'bg-red-50 text-danger' : 'bg-green-50 text-success'
+                    }`}>
+                      {tx.type}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-2 text-[9px] font-bold text-slate-300 uppercase tracking-widest">
+                  {formatDateTime(tx.date)}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       
-      {filteredTransactions.length === 0 ? (
-        <div className="text-center py-10">
-          <p className="text-slate-500">No transactions match your filters.</p>
-        </div>
-      ) : (
-        <ul className="space-y-3">
-          {filteredTransactions.map(tx => (
-            <li
-              key={tx.id}
-              className="bg-white p-3 rounded-lg shadow-sm flex justify-between items-center cursor-pointer hover:bg-slate-50 transition-transform duration-150 ease-in-out hover:scale-[1.02] active:scale-[0.99]"
-              onClick={() => onSelectCustomer(tx.customerId)}
-            >
-              <div>
-                <p className="font-semibold text-slate-800">{tx.customerName}</p>
-                <p className="text-sm text-slate-600">
-                  {tx.items.length > 0 ? `${tx.items.length} item(s)` : tx.description || 'Transaction'}
-                </p>
-                <p className="text-xs text-slate-400 mt-1">{formatDate(tx.date)}</p>
-              </div>
-              <p className={`font-bold text-lg ${tx.type === TransactionType.GAVE ? 'text-danger' : 'text-success'}`}>
-                {tx.type === TransactionType.GAVE ? '-' : '+'} {formatCurrency(tx.amount)}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="text-center py-4">
+        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+          Showing {filteredTransactions.length} of {allTransactions.length} entries
+        </p>
+      </div>
     </div>
   );
 };

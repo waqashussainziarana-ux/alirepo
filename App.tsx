@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Customer, Transaction, TransactionType, Item, TransactionItem } from './types';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Customer, Transaction, TransactionType, Item } from './types';
 import CustomerList from './components/CustomerList';
 import CustomerDetail from './components/CustomerDetail';
 import Header from './components/Header';
@@ -10,7 +10,9 @@ import SettingsPage from './components/SettingsPage';
 import AuthPage from './components/AuthPage';
 import UpdateNotification from './components/UpdateNotification';
 import InstallBanner from './components/InstallBanner';
-import { cloudFetch, cloudSave, isVercelEnabled } from './services/vercelDb';
+import ConfirmationModal from './components/ConfirmationModal';
+import { cloudFetch, cloudSave } from './services/vercelDb';
+import { RefreshIcon } from './components/icons/RefreshIcon';
 
 type View = 'customers' | 'items' | 'settings';
 
@@ -22,242 +24,226 @@ const App: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [syncError, setSyncError] = useState<boolean | 'AUTH'>(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false); 
+  
+  const [hasSyncedAtLeastOnce, setHasSyncedAtLeastOnce] = useState(false);
+  const localTimestampRef = useRef<number>(Number(localStorage.getItem('dt_last_updated') || '0'));
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<View>('customers');
   const [showUpdate, setShowUpdate] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
-  // PWA Install States
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+  
+  const getStorageKey = (key: string) => `dt_v45_${key}_${currentUser?.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
 
   useEffect(() => {
-    const checkInstalled = () => {
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-      const isIOSStandalone = (window.navigator as any).standalone === true;
-      setIsInstalled(isStandalone || isIOSStandalone);
-    };
-
-    checkInstalled();
-
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+    setIsInstalled(isStandalone);
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      if (!window.matchMedia('(display-mode: standalone)').matches) {
-        setShowInstallBanner(true);
-      }
     };
-
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    window.addEventListener('appinstalled', () => {
-      setDeferredPrompt(null);
-      setShowInstallBanner(false);
-      setIsInstalled(true);
-      console.log('PWA was installed');
-    });
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`User response: ${outcome}`);
-    setDeferredPrompt(null);
-    setShowInstallBanner(false);
-  };
-
-  // Auto-Login Sync
-  useEffect(() => {
-    const loadGlobalData = async () => {
-      if (!currentUser) return;
-      setIsSyncing(true);
-      
-      try {
-        const [cloudCustomers, cloudItems] = await Promise.all([
-          cloudFetch(currentUser, 'customers'),
-          cloudFetch(currentUser, 'items')
-        ]);
-        
-        let finalCustomers = cloudCustomers || [];
-        let finalItems = cloudItems || [];
-
-        if (finalCustomers.length === 0) {
-          const local = localStorage.getItem(`daily-transactions-customers-${currentUser}`);
-          if (local) finalCustomers = JSON.parse(local);
-        }
-        if (finalItems.length === 0) {
-          const local = localStorage.getItem(`daily-transactions-items-${currentUser}`);
-          if (local) finalItems = JSON.parse(local);
-        }
-
-        setCustomers(finalCustomers);
-        setItems(finalItems);
-        setLastSynced(new Date().toLocaleTimeString());
-      } catch (e) {
-        console.error("Critical: Initial cloud sync failed.", e);
-      } finally {
-        setIsSyncing(false);
-      }
-    };
-
-    loadGlobalData();
-  }, [currentUser]);
-
-  // Background Persistence
-  useEffect(() => {
+  const loadData = useCallback(async (isManual = false) => {
     if (!currentUser) return;
+    setIsSyncing(true);
+    setSyncError(false);
+
+    const localC = localStorage.getItem(getStorageKey('customers'));
+    const localI = localStorage.getItem(getStorageKey('items'));
+    if (!isInitialized) {
+      if (localC) setCustomers(JSON.parse(localC));
+      if (localI) setItems(JSON.parse(localI));
+    }
+
+    try {
+      const [cloudC, cloudI] = await Promise.all([
+        cloudFetch(currentUser, 'customers'),
+        cloudFetch(currentUser, 'items')
+      ]);
+
+      if (cloudC === null || cloudI === null) {
+        // null specifically signals an auth failure or unrecoverable error in our updated service
+        setSyncError('AUTH');
+        throw new Error("Cloud auth error");
+      }
+
+      const cloudTs = cloudC?.ts || 0;
+      const isCloudNewer = cloudTs > localTimestampRef.current;
+
+      if (isManual || isCloudNewer || !isDirty) {
+        if (cloudC && cloudC.data) {
+          setCustomers(cloudC.data);
+          localTimestampRef.current = cloudTs;
+        }
+        if (cloudI && cloudI.data) {
+          setItems(cloudI.data);
+        }
+      }
+
+      setHasSyncedAtLeastOnce(true);
+      setLastSynced(new Date().toLocaleTimeString());
+      setSyncError(false);
+    } catch (e: any) {
+      if (e.message !== "Cloud auth error") {
+        setSyncError(true);
+      }
+    } finally {
+      setIsInitialized(true);
+      setIsSyncing(false);
+    }
+  }, [currentUser, isInitialized, isDirty]);
+
+  useEffect(() => {
+    if (currentUser && !isInitialized) {
+      loadData();
+    }
+  }, [currentUser, loadData, isInitialized]);
+
+  useEffect(() => {
+    if (!currentUser || !isInitialized) return;
+    localStorage.setItem(getStorageKey('customers'), JSON.stringify(customers));
+    localStorage.setItem(getStorageKey('items'), JSON.stringify(items));
+    localStorage.setItem('dt_last_updated', localTimestampRef.current.toString());
+  }, [customers, items, currentUser, isInitialized]);
+
+  useEffect(() => {
+    if (!currentUser || !isInitialized || !isDirty || !hasSyncedAtLeastOnce || syncError === 'AUTH') return;
 
     const autoSync = async () => {
-      localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(customers));
-      localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(items));
-
       setIsSyncing(true);
       try {
-        await Promise.all([
+        const now = Date.now();
+        const results = await Promise.all([
           cloudSave(currentUser, 'customers', customers),
           cloudSave(currentUser, 'items', items)
         ]);
+        
+        if (results.some(r => r === null)) {
+          setSyncError('AUTH');
+          return;
+        }
+
+        localTimestampRef.current = now;
+        localStorage.setItem('dt_last_updated', now.toString());
+        
         setLastSynced(new Date().toLocaleTimeString());
+        setSyncError(false);
+        setIsDirty(false);
       } catch (e) {
-        console.warn("Auto-sync to Supabase failed.");
+        setSyncError(true);
       } finally {
         setIsSyncing(false);
       }
     };
 
-    const timer = setTimeout(autoSync, 2000);
+    const timer = setTimeout(autoSync, 3000);
     return () => clearTimeout(timer);
-  }, [customers, items, currentUser]);
+  }, [customers, items, currentUser, isInitialized, isDirty, hasSyncedAtLeastOnce, syncError]);
+
+  const markDirty = () => {
+    setIsDirty(true);
+    localTimestampRef.current = Date.now();
+  };
 
   const handleLogin = (username: string) => {
     setCurrentUser(username);
     window.sessionStorage.setItem('daily-transactions-user', username);
+    setIsInitialized(false);
+    setHasSyncedAtLeastOnce(false);
+    setIsDirty(false);
+    localTimestampRef.current = 0;
   };
   
-  const handleLogout = () => {
-    if(confirm("Logout? Make sure you see 'Sync Complete' to ensure your data is on the cloud.")) {
-      setCurrentUser(null);
-      window.sessionStorage.removeItem('daily-transactions-user');
-      setCustomers([]);
-      setItems([]);
-      setSelectedCustomerId(null);
-      setActiveView('customers');
-    }
-  };
-
-  const handleExport = () => {
-    const data = {
-      version: '4.5',
-      user: currentUser,
-      exportedAt: new Date().toISOString(),
-      customers,
-      items
-    };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `backup_${currentUser}_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const json = JSON.parse(e.target?.result as string);
-        if (!json.customers || !Array.isArray(json.customers)) {
-          throw new Error("Invalid backup file: Missing customers data.");
-        }
-
-        if (confirm("This will overwrite your current device data with the file content. Continue?")) {
-          setCustomers(json.customers);
-          if (json.items && Array.isArray(json.items)) {
-            setItems(json.items);
-          }
-          alert("Backup restored successfully! Syncing to cloud...");
-        }
-      } catch (err) {
-        alert("Error importing file: " + (err instanceof Error ? err.message : "Unknown error"));
-      }
-      event.target.value = '';
-    };
-    reader.readAsText(file);
+  const handleLogout = () => setIsLogoutConfirmOpen(true);
+  const executeLogout = () => {
+    setCurrentUser(null);
+    window.sessionStorage.removeItem('daily-transactions-user');
+    setCustomers([]);
+    setItems([]);
+    setSelectedCustomerId(null);
+    setActiveView('customers');
+    setIsInitialized(false);
+    setHasSyncedAtLeastOnce(false);
+    setIsLogoutConfirmOpen(false);
   };
 
   const handleAddCustomer = (name: string, phone: string) => {
-    const newCustomer: Customer = { id: crypto.randomUUID(), name, phone, transactions: [] };
-    setCustomers(prev => [...prev, newCustomer]);
+    const newId = crypto.randomUUID();
+    setCustomers(prev => [...prev, { id: newId, name, phone, transactions: [] }]);
+    markDirty();
   };
 
   const handleEditCustomer = (id: string, name: string, phone: string) => {
     setCustomers(prev => prev.map(c => c.id === id ? { ...c, name, phone } : c));
+    markDirty();
   };
 
-  const handleDeleteCustomer = (customerId: string) => {
-    setCustomers(prev => prev.filter(c => c.id !== customerId));
-    if (selectedCustomerId === customerId) {
-      setSelectedCustomerId(null);
-    }
+  const handleDeleteCustomer = (id: string) => {
+    setCustomers(prev => prev.filter(c => c.id !== id));
+    if (selectedCustomerId === id) setSelectedCustomerId(null);
+    markDirty();
   };
 
   const handleAddItem = (name: string, price: number, unit: string): Item => {
     const newItem: Item = { id: crypto.randomUUID(), name, price, unit };
     setItems(prev => [...prev, newItem]);
+    markDirty();
     return newItem;
   };
 
-  const handleEditItem = (updatedItem: Item) => {
-    setItems(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
+  const handleEditItem = (item: Item) => {
+    setItems(prev => prev.map(i => i.id === item.id ? item : i));
+    markDirty();
   };
 
-  const handleDeleteItem = (itemId: string) => {
-    setItems(prev => prev.filter(item => item.id !== itemId));
+  const handleDeleteItem = (id: string) => {
+    setItems(prev => prev.filter(i => i.id !== id));
+    markDirty();
   };
 
-  const handleAddMultipleItems = (itemsToAdd: Array<Omit<Item, 'id'>>) => {
-    const newItems: Item[] = itemsToAdd.map(item => ({ ...item, id: crypto.randomUUID() }));
-    setItems(prev => [...prev, ...newItems]);
+  const handleAddMultipleItems = (itemsToAdd: any[]) => {
+    setItems(prev => [...prev, ...itemsToAdd.map(i => ({ ...i, id: crypto.randomUUID() }))]);
+    markDirty();
   };
 
-  const handleAddTransaction = (customerId: string, transaction: Omit<Transaction, 'id' | 'date'>) => {
-    const newTransaction: Transaction = { 
-        ...transaction, 
-        id: crypto.randomUUID(), 
-        date: (transaction as any).date || new Date().toISOString() 
-    };
-    setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, transactions: [newTransaction, ...c.transactions] } : c));
-  };
-
-  const handleEditTransaction = (customerId: string, updatedTransaction: Transaction) => {
-    setCustomers(prev => prev.map(c => c.id === customerId ? {
-      ...c,
-      transactions: c.transactions.map(tx => tx.id === updatedTransaction.id ? updatedTransaction : tx)
+  const handleAddTransaction = (customerId: string, tx: any) => {
+    setCustomers(prev => prev.map(c => c.id === customerId ? { 
+      ...c, 
+      transactions: [{ ...tx, id: crypto.randomUUID(), date: new Date().toISOString() }, ...c.transactions] 
     } : c));
+    markDirty();
   };
 
-  const handleDeleteTransaction = (customerId: string, transactionId: string) => {
-    setCustomers(prev => prev.map(c => c.id === customerId ? {
-      ...c,
-      transactions: c.transactions.filter(tx => tx.id !== transactionId)
+  const handleEditTransaction = (customerId: string, tx: Transaction) => {
+    setCustomers(prev => prev.map(c => c.id === customerId ? { 
+      ...c, 
+      transactions: c.transactions.map(t => t.id === tx.id ? tx : t) 
     } : c));
+    markDirty();
   };
 
-  const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId) || null, [customers, selectedCustomerId]);
+  const handleDeleteTransaction = (customerId: string, tid: string) => {
+    setCustomers(prev => prev.map(c => c.id === customerId ? { 
+      ...c, 
+      transactions: c.transactions.filter(t => t.id !== tid) 
+    } : c));
+    markDirty();
+  };
+
+  const selectedCustomer = useMemo(() => {
+    if (!Array.isArray(customers)) return null;
+    return customers.find(c => c.id === selectedCustomerId) || null;
+  }, [customers, selectedCustomerId]);
   
   if (!currentUser) return <AuthPage onLogin={handleLogin} />;
 
@@ -269,61 +255,79 @@ const App: React.FC = () => {
           onBack={selectedCustomer ? () => setSelectedCustomerId(null) : undefined}
           activeView={activeView}
           showInstallButton={!!deferredPrompt && !isInstalled}
-          onInstallClick={handleInstallClick}
+          onInstallClick={() => deferredPrompt?.prompt()}
+          isSyncing={isSyncing}
+          syncError={!!syncError}
         />
         
         <main className="p-4 flex-grow pb-24">
-          <div className="flex justify-between items-center mb-4 px-1 bg-slate-50 p-2 rounded-lg border border-slate-200">
+          <div className={`flex justify-between items-center mb-4 px-3 py-2.5 rounded-xl border transition-all ${syncError === 'AUTH' ? 'bg-orange-50 border-orange-100' : syncError ? 'bg-red-50 border-red-100 shadow-sm' : 'bg-slate-50 border-slate-200'}`}>
             <div className="flex items-center gap-2">
-               <div className={`w-2 h-2 rounded-full bg-success shadow-[0_0_8px_rgba(22,163,74,0.6)] animate-pulse`}></div>
-               <span className="text-[10px] font-black uppercase tracking-widest text-success">
-                 SUPABASE CLOUD LINKED
+               <div className={`w-2 h-2 rounded-full ${syncError === 'AUTH' ? 'bg-orange-400' : syncError ? 'bg-danger animate-pulse' : isSyncing ? 'bg-amber-400 animate-spin' : !hasSyncedAtLeastOnce ? 'bg-slate-300' : isDirty ? 'bg-amber-400' : 'bg-success'}`}></div>
+               <span className={`text-[10px] font-black uppercase tracking-widest ${syncError === 'AUTH' ? 'text-orange-600' : syncError ? 'text-danger' : isSyncing ? 'text-amber-600' : !hasSyncedAtLeastOnce ? 'text-slate-400' : isDirty ? 'text-amber-600' : 'text-success'}`}>
+                 {syncError === 'AUTH' ? 'Invalid Database Key' : syncError ? 'Network Offline' : isSyncing ? 'Syncing...' : !hasSyncedAtLeastOnce ? 'Connecting...' : isDirty ? 'Local Save Only' : 'Cloud Synchronized'}
                </span>
             </div>
-            <div className="text-[9px] font-bold text-slate-400">
-              {isSyncing ? 'SYNCING...' : lastSynced ? `LAST SYNC: ${lastSynced}` : 'READY'}
+            <div className="flex items-center gap-3">
+              <span className="text-[9px] font-bold text-slate-400 uppercase">
+                {syncError === 'AUTH' ? 'Sync Disabled' : lastSynced ? `Updated ${lastSynced}` : 'Checking...'}
+              </span>
+              <button 
+                onClick={() => loadData(true)}
+                disabled={isSyncing}
+                className={`p-1.5 rounded-md transition-all ${syncError ? 'bg-slate-300 text-white' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
+                title="Retry Cloud Connection"
+              >
+                <RefreshIcon className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+              </button>
             </div>
           </div>
 
-          {selectedCustomer ? (
+          {!isInitialized ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+              <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+              <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Verifying Storage...</p>
+            </div>
+          ) : selectedCustomer ? (
             <CustomerDetail 
               customer={selectedCustomer} 
               onAddTransaction={handleAddTransaction}
               onEditTransaction={handleEditTransaction}
               onDeleteTransaction={handleDeleteTransaction}
-              allItems={items} 
+              allItems={Array.isArray(items) ? items : []} 
               onAddItem={handleAddItem}
             />
           ) : (
             <>
               {activeView === 'customers' && (
                 <CustomerList 
-                  customers={customers} 
+                  customers={Array.isArray(customers) ? customers : []} 
                   onSelectCustomer={setSelectedCustomerId} 
                   onAddCustomer={handleAddCustomer} 
                   onEditCustomer={handleEditCustomer}
                   onDeleteCustomer={handleDeleteCustomer}
                 />
               )}
-              {activeView === 'items' && <ItemsList items={items} onAddItem={handleAddItem} onEditItem={handleEditItem} onDeleteItem={handleDeleteItem} onAddMultipleItems={handleAddMultipleItems} />}
+              {activeView === 'items' && <ItemsList items={Array.isArray(items) ? items : []} onAddItem={handleAddItem} onEditItem={handleEditItem} onDeleteItem={handleDeleteItem} onAddMultipleItems={handleAddMultipleItems} />}
               {activeView === 'settings' && <SettingsPage 
-                onExport={handleExport} onImport={handleImport} onLogout={handleLogout} 
-                currentUser={currentUser} onInstallClick={handleInstallClick}
+                onExport={() => {}} onImport={() => {}} onLogout={handleLogout} 
+                currentUser={currentUser} onInstallClick={() => {}}
                 isInstallable={!!deferredPrompt} isInstalled={isInstalled} isSyncing={isSyncing}
               />}
             </>
           )}
         </main>
         
-        {showInstallBanner && !isInstalled && (
-          <InstallBanner 
-            onInstall={handleInstallClick} 
-            onDismiss={() => setShowInstallBanner(false)} 
-          />
-        )}
-
         <UpdateNotification show={showUpdate} onUpdate={() => window.location.reload()} />
         {!selectedCustomer && <BottomNav activeView={activeView} setActiveView={setActiveView} />}
+        
+        <ConfirmationModal 
+          isOpen={isLogoutConfirmOpen}
+          onClose={() => setIsLogoutConfirmOpen(false)}
+          onConfirm={executeLogout}
+          title="Sign Out"
+          message="Sign out of Daily Transactions? Your data remains secure in your browser even if offline."
+        />
       </div>
     </div>
   );
