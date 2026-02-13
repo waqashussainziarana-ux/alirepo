@@ -4,90 +4,61 @@ export interface CloudConfig {
   key: string;
 }
 
+/**
+ * Supabase configuration for Daily Transactions.
+ * Hardcoded to ensure zero-setup cross-device synchronization.
+ */
 const getConfig = (): CloudConfig | null => {
-  // CRITICAL: We MUST NOT use process.env.API_KEY here. 
-  // That variable is reserved for Gemini. Using it for Supabase causes 401/400 errors.
-  const url = process.env.SUPABASE_URL || "https://einilxwsgjrpuhvpsipe.supabase.co";
-  const key = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVpbmlseHdzZ2pycHVodnBzaXBlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwMjc0NDIsImV4cCI6MjA3NzYwMzQ0Mn0.mjHXBDaOzovXuIybQze59Bg4UB3yyMmvlmJknqA1o_8";
-  
-  if (!url || !key || url.includes("your-project") || key.length < 20) return null;
+  const url = "https://einilxwsgjrpuhvpsipe.supabase.co";
+  const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVpbmlseHdzZ2pycHVodnBzaXBlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwMjc0NDIsImV4cCI6MjA3NzYwMzQ0Mn0.mjHXBDaOzovXuIybQze59Bg4UB3yyMmvlmJknqA1o_8";
   return { url, key };
 };
 
 export const isVercelEnabled = () => {
   const config = getConfig();
-  return !!config;
+  return !!(config.url && config.key);
 };
 
 /**
- * Robust fetch wrapper for Supabase REST API
+ * PostgREST API helper for Supabase.
  */
 async function cloudRequest(method: 'GET' | 'POST', key: string, data?: any) {
   const config = getConfig();
   if (!config) return null;
 
-  const baseUrl = config.url.endsWith('/') ? config.url.slice(0, -1) : config.url;
-  const tableUrl = `${baseUrl}/rest/v1/kv_store`;
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  const url = `${config.url}/rest/v1/kv_store`;
 
   try {
-    const headers: Record<string, string> = {
-      'apikey': config.key,
-      'Authorization': `Bearer ${config.key}`,
-      'Content-Type': 'application/json',
-    };
-
     if (method === 'GET') {
-      const query = new URLSearchParams({
-        id: `eq.${key}`,
-        select: 'value',
-      });
-
-      const response = await fetch(`${tableUrl}?${query.toString()}`, {
+      const response = await fetch(`${url}?id=eq.${key}&select=value`, {
         method: 'GET',
-        headers,
-        signal: controller.signal,
+        headers: {
+          'apikey': config.key,
+          'Authorization': `Bearer ${config.key}`,
+          'Content-Type': 'application/json',
+        },
       });
       
-      clearTimeout(timeoutId);
-
-      if (response.status === 401 || response.status === 403 || response.status === 400) {
-        const err = await response.json().catch(() => ({ message: 'Auth failed' }));
-        console.error("Supabase Auth Error:", err);
-        throw new Error("AUTH_ERROR");
-      }
-
-      if (response.status === 404) return undefined;
-      if (!response.ok) throw new Error(`HTTP_${response.status}`);
-      
+      if (!response.ok) return null;
       const result = await response.json();
-      return (Array.isArray(result) && result.length > 0) ? result[0].value : undefined;
+      return result.length > 0 ? result[0].value : undefined;
     } else {
-      headers['Prefer'] = 'resolution=merge-duplicates';
-      
-      const response = await fetch(tableUrl, {
+      const response = await fetch(url, {
         method: 'POST',
-        headers,
-        signal: controller.signal,
+        headers: {
+          'apikey': config.key,
+          'Authorization': `Bearer ${config.key}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates',
+        },
         body: JSON.stringify({ id: key, value: data }),
       });
       
-      clearTimeout(timeoutId);
-      if (response.status === 401 || response.status === 403 || response.status === 400) {
-        throw new Error("AUTH_ERROR");
-      }
-      if (!response.ok) throw new Error(`SAVE_ERR_${response.status}`);
-      return true;
+      return response.ok ? true : null;
     }
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    if (error.message === "AUTH_ERROR") {
-      // Return a special object so the App knows to disable cloud features
-      return { _isAuthError: true };
-    }
-    throw error;
+  } catch (error) {
+    console.error("Cloud Error:", error);
+    return null;
   }
 }
 
@@ -95,46 +66,37 @@ const getNormalizedId = (userId: string) => userId.toLowerCase().trim().replace(
 
 export const cloudSave = async (userId: string, key: string, data: any) => {
   const fullKey = `supa_v45_${key}_${getNormalizedId(userId)}`;
-  const payload = {
-    data: data,
-    ts: Date.now(),
-    v: 45
-  };
-  const res = await cloudRequest('POST', fullKey, payload);
-  return res && typeof res === 'object' && res._isAuthError ? null : res;
+  return await cloudRequest('POST', fullKey, data);
 };
 
+/**
+ * RESILIENT FETCH: Searches multiple keys to find valid array data
+ */
 export const cloudFetch = async (userId: string, key: string) => {
   const id = getNormalizedId(userId);
-  const fullKey = `supa_v45_${key}_${id}`;
-  
-  try {
-    const result = await cloudRequest('GET', fullKey);
-    if (result && result._isAuthError) return null; // Connectivity/Auth error signal
-    
-    if (result && typeof result === 'object' && 'data' in result) return result;
-    if (Array.isArray(result)) return { data: result, ts: 0 };
-    return undefined;
-  } catch (e) {
-    return null; 
+  const possibleKeys = [
+    `supa_v45_${key}_${id}`, 
+    `supa_v2_${key}_${id}`, 
+    `daily-transactions-${key}-${userId}`
+  ];
+
+  for (const k of possibleKeys) {
+    const result = await cloudRequest('GET', k);
+    if (result !== undefined && result !== null) {
+      // If the result is a wrapper object { data: [], ... }
+      if (result.data && Array.isArray(result.data)) return result.data;
+      // If the result is a direct array
+      if (Array.isArray(result)) return result;
+    }
   }
+  return undefined;
 };
 
 export const cloudGetUsers = async (): Promise<Record<string, { passwordHash: string }>> => {
-  try {
-    const result = await cloudRequest('GET', "global_user_registry");
-    if (result && result._isAuthError) return {};
-    return result || {};
-  } catch (e) {
-    return {};
-  }
+  const result = await cloudRequest('GET', "global_user_registry");
+  return result || {};
 };
 
 export const cloudSaveUsers = async (users: Record<string, { passwordHash: string }>) => {
-  try {
-    const res = await cloudRequest('POST', "global_user_registry", users);
-    return res && typeof res === 'object' && res._isAuthError ? false : !!res;
-  } catch (e) {
-    return false;
-  }
-}
+  return await cloudRequest('POST', "global_user_registry", users);
+};

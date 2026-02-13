@@ -2,10 +2,9 @@
 import React, { useState } from 'react';
 import { Customer, Transaction, TransactionType, Item } from '../types';
 import AddTransactionModal from './AddTransactionModal';
-import { calculateBalance, calculateCustomerTotals, formatCurrency, downloadCSV } from '../utils/helpers';
+import { calculateBalance, calculateCustomerTotals, formatCurrency } from '../utils/helpers';
 import { PencilIcon } from './icons/PencilIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
-import { TableIcon } from './icons/TableIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import ConfirmationModal from './ConfirmationModal';
 
@@ -66,18 +65,6 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
       hour12: true
     });
     return `${date} • ${time}`;
-  };
-
-  const handleDownloadCSV = () => {
-    const headers = ['Date', 'Description', 'Items', 'Type', 'Amount (EUR)'];
-    const rows = [...customer.transactions].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(tx => [
-      new Date(tx.date).toLocaleString(),
-      tx.description || '',
-      tx.items?.map(i => `${i.name} x${i.quantity}`).join('; ') || '',
-      tx.type,
-      (tx.type === TransactionType.GAVE ? -tx.amount : tx.amount).toString()
-    ]);
-    downloadCSV(headers, rows, `${customer.name.replace(/\s+/g, '_')}_Transactions`);
   };
 
   const handleDownloadPDF = () => {
@@ -153,24 +140,13 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
               {balance < 0 ? 'YOU WILL GET' : balance > 0 ? 'YOU WILL GIVE' : 'SETTLED'}
             </div>
           </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={handleDownloadCSV}
-              className="p-2 bg-slate-50 hover:bg-primary/5 text-slate-400 hover:text-primary border border-slate-200 hover:border-primary/20 rounded-lg transition-all shadow-sm flex flex-col items-center gap-1"
-              title="Download Excel/CSV"
-            >
-              <TableIcon className="w-5 h-5" />
-              <span className="text-[7px] font-black uppercase">CSV</span>
-            </button>
-            <button 
-              onClick={handleDownloadPDF}
-              className="p-2 bg-slate-50 hover:bg-primary/5 text-slate-400 hover:text-primary border border-slate-200 hover:border-primary/20 rounded-lg transition-all shadow-sm flex flex-col items-center gap-1"
-              title="Download PDF"
-            >
-              <DownloadIcon className="w-5 h-5" />
-              <span className="text-[7px] font-black uppercase">PDF</span>
-            </button>
-          </div>
+          <button 
+            onClick={handleDownloadPDF}
+            className="p-2 bg-slate-50 hover:bg-primary/5 text-slate-400 hover:text-primary border border-slate-200 hover:border-primary/20 rounded-lg transition-all shadow-sm"
+            title="Download PDF"
+          >
+            <DownloadIcon className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50">

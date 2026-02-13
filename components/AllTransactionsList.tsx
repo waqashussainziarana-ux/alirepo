@@ -1,10 +1,9 @@
 
 import React, { useState, useMemo } from 'react';
 import { Customer, TransactionType, Transaction } from '../types';
-import { formatCurrency, downloadCSV } from '../utils/helpers';
+import { formatCurrency } from '../utils/helpers';
 import { SearchIcon } from './icons/SearchIcon';
 import { SortIcon } from './icons/SortIcon';
-import { TableIcon } from './icons/TableIcon';
 
 interface AllTransactionsListProps {
   customers: Customer[];
@@ -67,19 +66,6 @@ const AllTransactionsList: React.FC<AllTransactionsListProps> = ({ customers, on
         }
       });
   }, [allTransactions, searchTerm, startDate, endDate, filterType, sortOrder]);
-
-  const handleExportCSV = () => {
-    const headers = ['Date', 'Customer', 'Description', 'Items', 'Type', 'Amount (EUR)'];
-    const rows = filteredTransactions.map(tx => [
-      new Date(tx.date).toLocaleString(),
-      tx.customerName,
-      tx.description || '',
-      tx.items?.map(i => `${i.name} x${i.quantity}`).join('; ') || '',
-      tx.type,
-      (tx.type === TransactionType.GAVE ? -tx.amount : tx.amount).toString()
-    ]);
-    downloadCSV(headers, rows, `Transaction_History_${new Date().toISOString().split('T')[0]}`);
-  };
 
   const formatDateTime = (dateString: string) => {
     const d = new Date(dateString);
@@ -171,15 +157,6 @@ const AllTransactionsList: React.FC<AllTransactionsListProps> = ({ customers, on
             </button>
           ))}
         </div>
-
-        <button 
-          onClick={handleExportCSV}
-          disabled={filteredTransactions.length === 0}
-          className="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-all text-[10px] font-black uppercase tracking-widest disabled:opacity-50 shadow-sm"
-        >
-          <TableIcon className="w-4 h-4" />
-          Export Filtered to CSV / Excel
-        </button>
       </div>
 
       {/* Transactions List */}

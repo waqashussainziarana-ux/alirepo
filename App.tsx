@@ -25,21 +25,19 @@ const App: React.FC = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [syncError, setSyncError] = useState<boolean | 'AUTH'>(false);
+  const [syncError, setSyncError] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
-  const [isDirty, setIsDirty] = useState(false); 
-  
-  const [hasSyncedAtLeastOnce, setHasSyncedAtLeastOnce] = useState(false);
-  const localTimestampRef = useRef<number>(Number(localStorage.getItem('dt_last_updated') || '0'));
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<View>('customers');
   const [showUpdate, setShowUpdate] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
+  // PWA Install States
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
-  
+
+  // Persistence Keys
   const getStorageKey = (key: string) => `dt_v45_${key}_${currentUser?.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
 
   useEffect(() => {
@@ -53,92 +51,69 @@ const App: React.FC = () => {
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
+  // 1. DATA LOADING FUNCTION (Memoized for reuse)
   const loadData = useCallback(async (isManual = false) => {
     if (!currentUser) return;
     setIsSyncing(true);
-    setSyncError(false);
-
-    const localC = localStorage.getItem(getStorageKey('customers'));
-    const localI = localStorage.getItem(getStorageKey('items'));
-    if (!isInitialized) {
+    
+    // Step A: Initial local load (only on first init)
+    if (!isInitialized && !isManual) {
+      const localC = localStorage.getItem(getStorageKey('customers'));
+      const localI = localStorage.getItem(getStorageKey('items'));
       if (localC) setCustomers(JSON.parse(localC));
       if (localI) setItems(JSON.parse(localI));
     }
 
+    // Step B: Attempt Cloud Fetch
     try {
       const [cloudC, cloudI] = await Promise.all([
         cloudFetch(currentUser, 'customers'),
         cloudFetch(currentUser, 'items')
       ]);
 
-      if (cloudC === null || cloudI === null) {
-        // null specifically signals an auth failure or unrecoverable error in our updated service
-        setSyncError('AUTH');
-        throw new Error("Cloud auth error");
-      }
+      // Only overwrite local state if cloud data exists
+      if (Array.isArray(cloudC)) setCustomers(cloudC);
+      if (Array.isArray(cloudI)) setItems(cloudI);
 
-      const cloudTs = cloudC?.ts || 0;
-      const isCloudNewer = cloudTs > localTimestampRef.current;
-
-      if (isManual || isCloudNewer || !isDirty) {
-        if (cloudC && cloudC.data) {
-          setCustomers(cloudC.data);
-          localTimestampRef.current = cloudTs;
-        }
-        if (cloudI && cloudI.data) {
-          setItems(cloudI.data);
-        }
-      }
-
-      setHasSyncedAtLeastOnce(true);
       setLastSynced(new Date().toLocaleTimeString());
       setSyncError(false);
-    } catch (e: any) {
-      if (e.message !== "Cloud auth error") {
-        setSyncError(true);
-      }
+    } catch (e) {
+      console.error("Sync Error:", e);
+      setSyncError(true);
     } finally {
       setIsInitialized(true);
       setIsSyncing(false);
     }
-  }, [currentUser, isInitialized, isDirty]);
+  }, [currentUser, isInitialized]);
 
+  // Initial Load
   useEffect(() => {
-    if (currentUser && !isInitialized) {
-      loadData();
-    }
-  }, [currentUser, loadData, isInitialized]);
+    loadData();
+  }, [currentUser, loadData]);
 
+  // 2. IMMEDIATE LOCAL PERSISTENCE
   useEffect(() => {
     if (!currentUser || !isInitialized) return;
     localStorage.setItem(getStorageKey('customers'), JSON.stringify(customers));
     localStorage.setItem(getStorageKey('items'), JSON.stringify(items));
-    localStorage.setItem('dt_last_updated', localTimestampRef.current.toString());
   }, [customers, items, currentUser, isInitialized]);
 
+  // 3. BACKGROUND SYNC (Debounced)
   useEffect(() => {
-    if (!currentUser || !isInitialized || !isDirty || !hasSyncedAtLeastOnce || syncError === 'AUTH') return;
+    if (!currentUser || !isInitialized) return;
+    
+    // If we're in a hard sync error state and have no data, don't try to save empty state over cloud
+    if (syncError && customers.length === 0) return;
 
     const autoSync = async () => {
       setIsSyncing(true);
       try {
-        const now = Date.now();
-        const results = await Promise.all([
+        await Promise.all([
           cloudSave(currentUser, 'customers', customers),
           cloudSave(currentUser, 'items', items)
         ]);
-        
-        if (results.some(r => r === null)) {
-          setSyncError('AUTH');
-          return;
-        }
-
-        localTimestampRef.current = now;
-        localStorage.setItem('dt_last_updated', now.toString());
-        
         setLastSynced(new Date().toLocaleTimeString());
         setSyncError(false);
-        setIsDirty(false);
       } catch (e) {
         setSyncError(true);
       } finally {
@@ -146,25 +121,19 @@ const App: React.FC = () => {
       }
     };
 
-    const timer = setTimeout(autoSync, 3000);
+    const timer = setTimeout(autoSync, 5000);
     return () => clearTimeout(timer);
-  }, [customers, items, currentUser, isInitialized, isDirty, hasSyncedAtLeastOnce, syncError]);
-
-  const markDirty = () => {
-    setIsDirty(true);
-    localTimestampRef.current = Date.now();
-  };
+  }, [customers, items, currentUser, isInitialized, syncError]);
 
   const handleLogin = (username: string) => {
     setCurrentUser(username);
     window.sessionStorage.setItem('daily-transactions-user', username);
-    setIsInitialized(false);
-    setHasSyncedAtLeastOnce(false);
-    setIsDirty(false);
-    localTimestampRef.current = 0;
   };
   
-  const handleLogout = () => setIsLogoutConfirmOpen(true);
+  const handleLogout = () => {
+    setIsLogoutConfirmOpen(true);
+  };
+
   const executeLogout = () => {
     setCurrentUser(null);
     window.sessionStorage.removeItem('daily-transactions-user');
@@ -173,47 +142,38 @@ const App: React.FC = () => {
     setSelectedCustomerId(null);
     setActiveView('customers');
     setIsInitialized(false);
-    setHasSyncedAtLeastOnce(false);
     setIsLogoutConfirmOpen(false);
   };
 
   const handleAddCustomer = (name: string, phone: string) => {
-    const newId = crypto.randomUUID();
-    setCustomers(prev => [...prev, { id: newId, name, phone, transactions: [] }]);
-    markDirty();
+    setCustomers(prev => [...prev, { id: crypto.randomUUID(), name, phone, transactions: [] }]);
   };
 
   const handleEditCustomer = (id: string, name: string, phone: string) => {
     setCustomers(prev => prev.map(c => c.id === id ? { ...c, name, phone } : c));
-    markDirty();
   };
 
   const handleDeleteCustomer = (id: string) => {
     setCustomers(prev => prev.filter(c => c.id !== id));
     if (selectedCustomerId === id) setSelectedCustomerId(null);
-    markDirty();
   };
 
   const handleAddItem = (name: string, price: number, unit: string): Item => {
     const newItem: Item = { id: crypto.randomUUID(), name, price, unit };
     setItems(prev => [...prev, newItem]);
-    markDirty();
     return newItem;
   };
 
   const handleEditItem = (item: Item) => {
     setItems(prev => prev.map(i => i.id === item.id ? item : i));
-    markDirty();
   };
 
   const handleDeleteItem = (id: string) => {
     setItems(prev => prev.filter(i => i.id !== id));
-    markDirty();
   };
 
   const handleAddMultipleItems = (itemsToAdd: any[]) => {
     setItems(prev => [...prev, ...itemsToAdd.map(i => ({ ...i, id: crypto.randomUUID() }))]);
-    markDirty();
   };
 
   const handleAddTransaction = (customerId: string, tx: any) => {
@@ -221,7 +181,6 @@ const App: React.FC = () => {
       ...c, 
       transactions: [{ ...tx, id: crypto.randomUUID(), date: new Date().toISOString() }, ...c.transactions] 
     } : c));
-    markDirty();
   };
 
   const handleEditTransaction = (customerId: string, tx: Transaction) => {
@@ -229,7 +188,6 @@ const App: React.FC = () => {
       ...c, 
       transactions: c.transactions.map(t => t.id === tx.id ? tx : t) 
     } : c));
-    markDirty();
   };
 
   const handleDeleteTransaction = (customerId: string, tid: string) => {
@@ -237,7 +195,6 @@ const App: React.FC = () => {
       ...c, 
       transactions: c.transactions.filter(t => t.id !== tid) 
     } : c));
-    markDirty();
   };
 
   const selectedCustomer = useMemo(() => {
@@ -257,26 +214,27 @@ const App: React.FC = () => {
           showInstallButton={!!deferredPrompt && !isInstalled}
           onInstallClick={() => deferredPrompt?.prompt()}
           isSyncing={isSyncing}
-          syncError={!!syncError}
+          syncError={syncError}
         />
         
         <main className="p-4 flex-grow pb-24">
-          <div className={`flex justify-between items-center mb-4 px-3 py-2.5 rounded-xl border transition-all ${syncError === 'AUTH' ? 'bg-orange-50 border-orange-100' : syncError ? 'bg-red-50 border-red-100 shadow-sm' : 'bg-slate-50 border-slate-200'}`}>
+          {/* Enhanced Sync Status Bar */}
+          <div className={`flex justify-between items-center mb-4 px-3 py-2.5 rounded-xl border transition-all ${syncError ? 'bg-red-50 border-red-100 shadow-sm' : 'bg-slate-50 border-slate-200'}`}>
             <div className="flex items-center gap-2">
-               <div className={`w-2 h-2 rounded-full ${syncError === 'AUTH' ? 'bg-orange-400' : syncError ? 'bg-danger animate-pulse' : isSyncing ? 'bg-amber-400 animate-spin' : !hasSyncedAtLeastOnce ? 'bg-slate-300' : isDirty ? 'bg-amber-400' : 'bg-success'}`}></div>
-               <span className={`text-[10px] font-black uppercase tracking-widest ${syncError === 'AUTH' ? 'text-orange-600' : syncError ? 'text-danger' : isSyncing ? 'text-amber-600' : !hasSyncedAtLeastOnce ? 'text-slate-400' : isDirty ? 'text-amber-600' : 'text-success'}`}>
-                 {syncError === 'AUTH' ? 'Invalid Database Key' : syncError ? 'Network Offline' : isSyncing ? 'Syncing...' : !hasSyncedAtLeastOnce ? 'Connecting...' : isDirty ? 'Local Save Only' : 'Cloud Synchronized'}
+               <div className={`w-2 h-2 rounded-full ${syncError ? 'bg-danger animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.4)]' : isSyncing ? 'bg-amber-400 animate-spin' : 'bg-success'}`}></div>
+               <span className={`text-[10px] font-black uppercase tracking-widest ${syncError ? 'text-danger' : isSyncing ? 'text-amber-600' : 'text-success'}`}>
+                 {syncError ? 'Cloud Offline' : isSyncing ? 'Syncing...' : 'Cloud Synced'}
                </span>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-[9px] font-bold text-slate-400 uppercase">
-                {syncError === 'AUTH' ? 'Sync Disabled' : lastSynced ? `Updated ${lastSynced}` : 'Checking...'}
+                {syncError ? 'Using Local Storage' : lastSynced ? `Updated ${lastSynced}` : 'Checking...'}
               </span>
               <button 
                 onClick={() => loadData(true)}
                 disabled={isSyncing}
-                className={`p-1.5 rounded-md transition-all ${syncError ? 'bg-slate-300 text-white' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
-                title="Retry Cloud Connection"
+                className={`p-1.5 rounded-md transition-all ${syncError ? 'bg-danger text-white hover:bg-red-600 shadow-md' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
+                title="Retry Cloud Sync"
               >
                 <RefreshIcon className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
               </button>
@@ -286,7 +244,7 @@ const App: React.FC = () => {
           {!isInitialized ? (
             <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
               <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
-              <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Verifying Storage...</p>
+              <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Waking up database...</p>
             </div>
           ) : selectedCustomer ? (
             <CustomerDetail 
@@ -326,7 +284,7 @@ const App: React.FC = () => {
           onClose={() => setIsLogoutConfirmOpen(false)}
           onConfirm={executeLogout}
           title="Sign Out"
-          message="Sign out of Daily Transactions? Your data remains secure in your browser even if offline."
+          message="Are you sure you want to sign out? Your data is safe in the cloud and will be available when you log back in."
         />
       </div>
     </div>
