@@ -52,19 +52,12 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
     }
   };
   
-  const formatDateTime = (dateString: string) => {
-    const d = new Date(dateString);
-    const date = d.toLocaleDateString('en-GB', {
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-GB', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
     });
-    const time = d.toLocaleTimeString('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
-    return `${date} • ${time}`;
   };
 
   const handleDownloadPDF = () => {
@@ -78,7 +71,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
     
     doc.setFontSize(12);
     doc.setTextColor(100);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 28);
     
     // Customer Info
     doc.setFontSize(14);
@@ -98,7 +91,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
     
     // Transactions Table
     const tableData = [...customer.transactions].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(tx => [
-      formatDateTime(tx.date),
+      formatDate(tx.date),
       tx.items && tx.items.length > 0 
         ? tx.items.map(i => `${i.name} (x${i.quantity})`).join(', ') 
         : tx.description || 'Transaction',
@@ -108,7 +101,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
 
     (doc as any).autoTable({
       startY: 85,
-      head: [['Date & Time', 'Description', 'Type', 'Amount']],
+      head: [['Date', 'Description', 'Type', 'Amount']],
       body: tableData,
       theme: 'striped',
       headStyles: { fillColor: [37, 99, 235] },
@@ -177,7 +170,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
                 <p className="text-slate-800 font-bold">{tx.description || 'Transaction'}</p>
                )}
               <div className="flex items-center gap-2 mt-2">
-                <span className="text-[10px] text-slate-400 font-bold uppercase">{formatDateTime(tx.date)}</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase">{formatDate(tx.date)}</span>
                 <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${tx.type === TransactionType.GAVE ? 'bg-red-50 text-danger' : 'bg-green-50 text-success'}`}>
                     {tx.type}
                 </span>
