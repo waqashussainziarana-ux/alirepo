@@ -147,17 +147,26 @@ const App: React.FC = () => {
 
   // Data Management: Export/Import
   const handleExport = () => {
+    if (!currentUser) return;
+
+    // Sanitize username: allow only letters, numbers, and underscores for the filename
+    const sanitizedUsername = currentUser.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const dateStr = new Date().toISOString().split('T')[0];
+
     const data = {
       customers,
       items,
       version: '4.5',
-      exportDate: new Date().toISOString()
+      exportDate: new Date().toISOString(),
+      owner: currentUser
     };
+    
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `daily_transactions_backup_${new Date().toISOString().split('T')[0]}.json`;
+    // New naming convention: [Username]_backup_YYYY-MM-DD.json
+    a.download = `${sanitizedUsername}_backup_${dateStr}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
