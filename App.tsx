@@ -145,6 +145,52 @@ const App: React.FC = () => {
     }
   };
 
+  // Data Management: Export/Import
+  const handleExport = () => {
+    const data = {
+      customers,
+      items,
+      version: '4.5',
+      exportDate: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `daily_transactions_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = e.target?.result as string;
+        const data = JSON.parse(content);
+
+        if (data.customers && Array.isArray(data.customers)) {
+          if (confirm("Restore from backup? This will replace your current device data and update the cloud sync.")) {
+            setCustomers(data.customers);
+            setItems(data.items || []);
+            // Sync the imported data to cloud and local storage
+            await syncData(data.customers, data.items || []);
+            alert("Backup restored successfully and synced to cloud.");
+          }
+        } else {
+          alert("Invalid backup file format. Could not find transaction data.");
+        }
+      } catch (err) {
+        alert("Error reading backup file. Please ensure it's a valid JSON file.");
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = ''; // Reset input
+  };
+
   // Customer Management Actions
   const handleAddCustomer = (name: string, phone: string) => {
     const newCustomer: Customer = { id: crypto.randomUUID(), name, phone, transactions: [] };
@@ -281,7 +327,7 @@ const App: React.FC = () => {
               )}
               {activeView === 'settings' && (
                 <SettingsPage 
-                  onExport={() => {}} onImport={() => {}} onLogout={handleLogout} 
+                  onExport={handleExport} onImport={handleImport} onLogout={handleLogout} 
                   currentUser={currentUser} onInstallClick={handleInstallClick}
                   isInstallable={!!deferredPrompt} isInstalled={isInstalled} isSyncing={isSyncing}
                 />
