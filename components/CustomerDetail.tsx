@@ -6,6 +6,7 @@ import { calculateBalance, calculateCustomerTotals, formatCurrency, formatDateTi
 import { PencilIcon } from './icons/PencilIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
 import { TrashIcon } from './icons/TrashIcon';
+import { ArrowPathIcon } from './icons/ArrowPathIcon';
 import ConfirmationModal from './ConfirmationModal';
 
 interface CustomerDetailProps {
@@ -15,6 +16,8 @@ interface CustomerDetailProps {
   onDeleteTransaction: (customerId: string, transactionId: string) => void;
   allItems: Item[];
   onAddItem: (name: string, price: number, unit: string) => Item;
+  onRefresh: () => void;
+  isSyncing: boolean;
 }
 
 const CustomerDetail: React.FC<CustomerDetailProps> = ({ 
@@ -23,7 +26,9 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
   onEditTransaction,
   onDeleteTransaction,
   allItems, 
-  onAddItem 
+  onAddItem,
+  onRefresh,
+  isSyncing
 }) => {
   const [isModalOpen, setModalOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<TransactionType>(TransactionType.GAVE);
@@ -125,13 +130,23 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({
               {balance < 0 ? 'YOU WILL GET' : balance > 0 ? 'YOU WILL GIVE' : 'SETTLED'}
             </div>
           </div>
-          <button 
-            onClick={handleDownloadPDF}
-            className="p-2 bg-slate-50 hover:bg-primary/5 text-slate-400 hover:text-primary border border-slate-200 hover:border-primary/20 rounded-lg transition-all shadow-sm"
-            title="Download PDF"
-          >
-            <DownloadIcon className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={onRefresh}
+              disabled={isSyncing}
+              className={`p-2 bg-slate-50 hover:bg-success/5 text-slate-400 hover:text-success border border-slate-200 hover:border-success/20 rounded-lg transition-all shadow-sm ${isSyncing ? 'opacity-50' : ''}`}
+              title="Sync Customer"
+            >
+              <ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin text-success' : ''}`} />
+            </button>
+            <button 
+              onClick={handleDownloadPDF}
+              className="p-2 bg-slate-50 hover:bg-primary/5 text-slate-400 hover:text-primary border border-slate-200 hover:border-primary/20 rounded-lg transition-all shadow-sm"
+              title="Download PDF"
+            >
+              <DownloadIcon className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50">

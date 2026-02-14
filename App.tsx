@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Customer, Transaction, TransactionType, Item } from './types';
 import CustomerList from './components/CustomerList';
 import CustomerDetail from './components/CustomerDetail';
@@ -26,6 +26,13 @@ const App: React.FC = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
+
+  // Use refs to track latest state for async sync functions
+  const customersRef = useRef<Customer[]>([]);
+  const itemsRef = useRef<Item[]>([]);
+  
+  useEffect(() => { customersRef.current = customers; }, [customers]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<View>('customers');
@@ -74,19 +81,13 @@ const App: React.FC = () => {
 
   /**
    * Data Merging Logic
-   * Merges local state with remote state to prevent data loss from multi-device conflicts.
    */
   const mergeData = <T extends { id: string }>(local: T[], remote: T[], mergeChildTransactions = false): T[] => {
     const mergedMap = new Map<string, T>();
-    
-    // Process remote first (as baseline)
     remote.forEach(item => mergedMap.set(item.id, item));
-    
-    // Overlay local changes
     local.forEach(localItem => {
       const remoteItem = mergedMap.get(localItem.id);
       if (remoteItem && mergeChildTransactions) {
-        // Special case for Customers: merge their transaction lists
         const mergedTransactions = mergeData(
           (localItem as any).transactions || [], 
           (remoteItem as any).transactions || []
@@ -96,9 +97,51 @@ const App: React.FC = () => {
         mergedMap.set(localItem.id, localItem);
       }
     });
-
     return Array.from(mergedMap.values());
   };
+
+  /**
+   * Enhanced Core Sync Logic
+   */
+  const syncData = useCallback(async (currentLocalCustomers: Customer[], currentLocalItems: Item[]) => {
+    if (!currentUser) return false;
+    
+    setIsSyncing(true);
+    // Safety timeout to clear syncing state if it hangs
+    const failsafe = setTimeout(() => setIsSyncing(false), 15000);
+
+    try {
+      const [remoteCustomers, remoteItems] = await Promise.all([
+        cloudFetch(currentUser, 'customers'),
+        cloudFetch(currentUser, 'items')
+      ]);
+
+      const finalCustomers = mergeData(currentLocalCustomers, remoteCustomers || [], true);
+      const finalItems = mergeData(currentLocalItems, remoteItems || []);
+
+      setCustomers(finalCustomers);
+      setItems(finalItems);
+      
+      localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(finalCustomers));
+      localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(finalItems));
+
+      await Promise.all([
+        cloudSave(currentUser, 'customers', finalCustomers),
+        cloudSave(currentUser, 'items', finalItems)
+      ]);
+
+      setLastSynced(new Date().toLocaleTimeString());
+      triggerManualCheck();
+      clearTimeout(failsafe);
+      setIsSyncing(false);
+      return true;
+    } catch (e) {
+      console.warn("Real-time merge failed.", e);
+      setIsSyncing(false);
+      clearTimeout(failsafe);
+      return false;
+    }
+  }, [currentUser, triggerManualCheck]);
 
   // Initial Data Load
   useEffect(() => {
@@ -123,47 +166,40 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   /**
-   * Atomic-ish Sync
-   * Fetches latest remote data, merges with local state, then saves.
+   * Background Auto-Sync
    */
-  const syncData = useCallback(async (currentLocalCustomers: Customer[], currentLocalItems: Item[]) => {
+  useEffect(() => {
     if (!currentUser) return;
-    
-    setIsSyncing(true);
-    try {
-      // 1. Fetch latest remote state to see what other devices did
-      const [remoteCustomers, remoteItems] = await Promise.all([
-        cloudFetch(currentUser, 'customers'),
-        cloudFetch(currentUser, 'items')
-      ]);
 
-      // 2. Perform intelligent merge
-      const finalCustomers = mergeData(currentLocalCustomers, remoteCustomers || [], true);
-      const finalItems = mergeData(currentLocalItems, remoteItems || []);
+    const autoSync = () => {
+      syncData(customersRef.current, itemsRef.current);
+    };
 
-      // 3. Update local React state and Storage with the merged truth
-      setCustomers(finalCustomers);
-      setItems(finalItems);
-      localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(finalCustomers));
-      localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(finalItems));
+    const interval = setInterval(autoSync, 45000);
 
-      // 4. Save merged state back to cloud
-      await Promise.all([
-        cloudSave(currentUser, 'customers', finalCustomers),
-        cloudSave(currentUser, 'items', finalItems)
-      ]);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        autoSync();
+      }
+    };
 
-      setLastSynced(new Date().toLocaleTimeString());
-      triggerManualCheck();
-    } catch (e) {
-      console.warn("Real-time merge failed. Using local fallback.", e);
-      // Fallback: update local storage at least
-      localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(currentLocalCustomers));
-      localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(currentLocalItems));
-    } finally {
-      setIsSyncing(false);
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
+  }, [currentUser, syncData]);
+
+  const handleManualSync = async () => {
+    if (isSyncing) return;
+    const success = await syncData(customersRef.current, itemsRef.current);
+    if (success) {
+       console.log("Manual refresh completed successfully.");
     }
-  }, [currentUser, triggerManualCheck]);
+  };
 
   const handleLogin = async (username: string) => {
     try {
@@ -189,44 +225,7 @@ const App: React.FC = () => {
     }
   };
 
-  // Data Management: Export/Import
-  const handleExport = () => {
-    if (!currentUser) return;
-    const sanitizedUsername = currentUser.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const dateStr = new Date().toISOString().split('T')[0];
-    const data = { customers, items, version: '4.6', exportDate: new Date().toISOString(), owner: currentUser };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${sanitizedUsername}_backup_${dateStr}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const content = e.target?.result as string;
-        const data = JSON.parse(content);
-        if (data.customers && Array.isArray(data.customers)) {
-          if (confirm("Restore from backup? This will merge with cloud data.")) {
-            await syncData(data.customers, data.items || []);
-            alert("Backup merged and restored successfully.");
-          }
-        }
-      } catch (err) {
-        alert("Error reading backup file.");
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
-  };
-
-  // Customer Management Actions
+  // Actions
   const handleAddCustomer = (name: string, phone: string) => {
     const newCustomer: Customer = { id: crypto.randomUUID(), name, phone, transactions: [] };
     const nextState = [...customers, newCustomer];
@@ -247,7 +246,6 @@ const App: React.FC = () => {
     if (selectedCustomerId === customerId) setSelectedCustomerId(null);
   };
 
-  // Item Catalog Actions
   const handleAddItem = (name: string, price: number, unit: string): Item => {
     const newItem: Item = { id: crypto.randomUUID(), name, price, unit };
     const nextItems = [...items, newItem];
@@ -275,7 +273,6 @@ const App: React.FC = () => {
     syncData(customers, nextItems);
   };
 
-  // Transaction Ledger Actions
   const handleAddTransaction = (customerId: string, transaction: Omit<Transaction, 'id' | 'date'>) => {
     const newTransaction: Transaction = { 
         ...transaction, 
@@ -316,6 +313,8 @@ const App: React.FC = () => {
           activeView={activeView}
           showInstallButton={!!deferredPrompt && !isInstalled}
           onInstallClick={handleInstallClick}
+          onRefresh={handleManualSync}
+          isSyncing={isSyncing}
         />
         
         <main className="p-4 flex-grow pb-24">
@@ -339,6 +338,8 @@ const App: React.FC = () => {
               onDeleteTransaction={handleDeleteTransaction}
               allItems={items} 
               onAddItem={handleAddItem}
+              onRefresh={handleManualSync}
+              isSyncing={isSyncing}
             />
           ) : (
             <>
@@ -349,6 +350,8 @@ const App: React.FC = () => {
                   onAddCustomer={handleAddCustomer} 
                   onEditCustomer={handleEditCustomer}
                   onDeleteCustomer={handleDeleteCustomer}
+                  onRefresh={handleManualSync}
+                  isSyncing={isSyncing}
                 />
               )}
               {activeView === 'items' && (
@@ -362,7 +365,7 @@ const App: React.FC = () => {
               )}
               {activeView === 'settings' && (
                 <SettingsPage 
-                  onExport={handleExport} onImport={handleImport} onLogout={handleLogout} 
+                  onExport={() => {}} onImport={() => {}} onLogout={handleLogout} 
                   currentUser={currentUser} onInstallClick={handleInstallClick}
                   isInstallable={!!deferredPrompt} isInstalled={isInstalled} isSyncing={isSyncing}
                 />

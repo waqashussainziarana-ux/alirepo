@@ -6,7 +6,6 @@ export interface CloudConfig {
 
 /**
  * Configuration provided by user for auto-linking.
- * Using hardcoded values to ensure zero-setup cross-device sync.
  */
 const getConfig = (): CloudConfig | null => {
   const url = "https://einilxwsgjrpuhvpsipe.supabase.co";
@@ -22,7 +21,7 @@ export const isVercelEnabled = () => {
 
 /**
  * Supabase PostgREST API request helper.
- * Manages the 'kv_store' table created by the user.
+ * Includes a timeout signal to prevent hanging in PWA/Mobile environments.
  */
 async function cloudRequest(method: 'GET' | 'UPSERT', key: string, data?: any) {
   const config = getConfig();
@@ -31,44 +30,50 @@ async function cloudRequest(method: 'GET' | 'UPSERT', key: string, data?: any) {
   const url = `${config.url}/rest/v1/kv_store`;
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+    const options: RequestInit = {
+      method: method === 'GET' ? 'GET' : 'POST',
+      headers: {
+        'apikey': config.key,
+        'Authorization': `Bearer ${config.key}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal
+    };
+
+    if (method === 'UPSERT') {
+      options.headers = {
+        ...options.headers,
+        'Prefer': 'resolution=merge-duplicates',
+      };
+      options.body = JSON.stringify({ id: key, value: data });
+    }
+
+    const fetchUrl = method === 'GET' ? `${url}?id=eq.${key}&select=value` : url;
+    const response = await fetch(fetchUrl, options);
+    
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return null;
+    
     if (method === 'GET') {
-      const response = await fetch(`${url}?id=eq.${key}&select=value`, {
-        method: 'GET',
-        headers: {
-          'apikey': config.key,
-          'Authorization': `Bearer ${config.key}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) return null;
       const result = await response.json();
       return result.length > 0 ? result[0].value : null;
-    } else {
-      // UPSERT using PostgREST syntax
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'apikey': config.key,
-          'Authorization': `Bearer ${config.key}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'resolution=merge-duplicates',
-        },
-        body: JSON.stringify({ id: key, value: data }),
-      });
-      
-      return response.ok;
     }
+    
+    return true;
   } catch (error) {
-    console.error("Supabase Connection Failed:", error);
+    if ((error as Error).name === 'AbortError') {
+      console.warn("Cloud request timed out.");
+    } else {
+      console.error("Supabase Connection Failed:", error);
+    }
     return null;
   }
 }
 
-/** 
- * USER REGISTRY (Global)
- * Stores account information across all devices.
- */
 export const cloudGetUsers = async (): Promise<Record<string, { passwordHash: string }>> => {
   const result = await cloudRequest('GET', "global_user_registry");
   return result || {};
@@ -78,9 +83,6 @@ export const cloudSaveUsers = async (users: Record<string, { passwordHash: strin
   return await cloudRequest('UPSERT', "global_user_registry", users);
 };
 
-/** 
- * TRANSACTION DATA (User-specific)
- */
 export const cloudSave = async (userId: string, key: string, data: any) => {
   const normalizedUser = userId.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
   const fullKey = `supa_v2_${key}_${normalizedUser}`;

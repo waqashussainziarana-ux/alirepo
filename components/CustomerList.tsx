@@ -11,6 +11,7 @@ import { SearchIcon } from './icons/SearchIcon';
 import { SortIcon } from './icons/SortIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { PencilIcon } from './icons/PencilIcon';
+import { ArrowPathIcon } from './icons/ArrowPathIcon';
 import ConfirmationModal from './ConfirmationModal';
 
 
@@ -20,14 +21,18 @@ interface CustomerListProps {
   onAddCustomer: (name: string, phone: string) => void;
   onEditCustomer: (id: string, name: string, phone: string) => void;
   onDeleteCustomer: (id: string) => void;
+  onRefresh: () => void;
+  isSyncing: boolean;
 }
 
 const CustomerListItem: React.FC<{ 
   customer: Customer; 
   onSelect: () => void; 
   onEdit: (e: React.MouseEvent) => void;
-  onDelete: (e: React.MouseEvent) => void 
-}> = ({ customer, onSelect, onEdit, onDelete }) => {
+  onDelete: (e: React.MouseEvent) => void;
+  onSync: (e: React.MouseEvent) => void;
+  isSyncing: boolean;
+}> = ({ customer, onSelect, onEdit, onDelete, onSync, isSyncing }) => {
   const balance = calculateBalance(customer);
   const { totalGave, totalGot } = calculateCustomerTotals(customer);
 
@@ -61,6 +66,14 @@ const CustomerListItem: React.FC<{
         {/* Tiny Actions Group */}
         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
+            onClick={onSync}
+            disabled={isSyncing}
+            className={`p-1.5 text-slate-300 hover:text-success hover:bg-green-50 rounded-md transition-all ${isSyncing ? 'animate-spin text-primary' : ''}`}
+            title="Sync Customer"
+          >
+            <ArrowPathIcon className="w-3.5 h-3.5" />
+          </button>
+          <button
             onClick={onEdit}
             className="p-1.5 text-slate-300 hover:text-primary hover:bg-blue-50 rounded-md"
             title="Edit"
@@ -80,7 +93,7 @@ const CustomerListItem: React.FC<{
   );
 };
 
-const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer, onAddCustomer, onEditCustomer, onDeleteCustomer }) => {
+const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer, onAddCustomer, onEditCustomer, onDeleteCustomer, onRefresh, isSyncing }) => {
   const [isAddCustomerModalOpen, setAddCustomerModalOpen] = useState(false);
   const [customerToEdit, setCustomerToEdit] = useState<Customer | null>(null);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
@@ -129,6 +142,11 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
   const handleDeleteRequest = (e: React.MouseEvent, customer: Customer) => {
     e.stopPropagation();
     setCustomerToDelete(customer);
+  };
+
+  const handleSyncRequest = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onRefresh();
   };
 
   return (
@@ -191,6 +209,8 @@ const CustomerList: React.FC<CustomerListProps> = ({ customers, onSelectCustomer
                   onSelect={() => onSelectCustomer(customer.id)}
                   onEdit={(e) => handleEditRequest(e, customer)}
                   onDelete={(e) => handleDeleteRequest(e, customer)}
+                  onSync={handleSyncRequest}
+                  isSyncing={isSyncing}
                 />
               ))}
             </ul>
