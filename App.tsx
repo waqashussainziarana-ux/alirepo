@@ -72,6 +72,34 @@ const App: React.FC = () => {
     setShowInstallBanner(false);
   };
 
+  /**
+   * Data Merging Logic
+   * Merges local state with remote state to prevent data loss from multi-device conflicts.
+   */
+  const mergeData = <T extends { id: string }>(local: T[], remote: T[], mergeChildTransactions = false): T[] => {
+    const mergedMap = new Map<string, T>();
+    
+    // Process remote first (as baseline)
+    remote.forEach(item => mergedMap.set(item.id, item));
+    
+    // Overlay local changes
+    local.forEach(localItem => {
+      const remoteItem = mergedMap.get(localItem.id);
+      if (remoteItem && mergeChildTransactions) {
+        // Special case for Customers: merge their transaction lists
+        const mergedTransactions = mergeData(
+          (localItem as any).transactions || [], 
+          (remoteItem as any).transactions || []
+        );
+        mergedMap.set(localItem.id, { ...localItem, transactions: mergedTransactions });
+      } else {
+        mergedMap.set(localItem.id, localItem);
+      }
+    });
+
+    return Array.from(mergedMap.values());
+  };
+
   // Initial Data Load
   useEffect(() => {
     const loadGlobalData = async () => {
@@ -86,7 +114,7 @@ const App: React.FC = () => {
         setItems(cloudItems || []);
         setLastSynced(new Date().toLocaleTimeString());
       } catch (e) {
-        console.error("Critical: Initial cloud sync failed.", e);
+        console.error("Initial cloud sync failed.", e);
       } finally {
         setIsSyncing(false);
       }
@@ -95,27 +123,43 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   /**
-   * Event-Driven Sync Helper
-   * Saves to LocalStorage and Cloud immediately on action.
+   * Atomic-ish Sync
+   * Fetches latest remote data, merges with local state, then saves.
    */
-  const syncData = useCallback(async (updatedCustomers: Customer[], updatedItems: Item[]) => {
+  const syncData = useCallback(async (currentLocalCustomers: Customer[], currentLocalItems: Item[]) => {
     if (!currentUser) return;
     
-    // Immediate Local Sync for offline safety
-    localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(updatedCustomers));
-    localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(updatedItems));
-    
-    // Background Cloud Sync
     setIsSyncing(true);
     try {
-      await Promise.all([
-        cloudSave(currentUser, 'customers', updatedCustomers),
-        cloudSave(currentUser, 'items', updatedItems)
+      // 1. Fetch latest remote state to see what other devices did
+      const [remoteCustomers, remoteItems] = await Promise.all([
+        cloudFetch(currentUser, 'customers'),
+        cloudFetch(currentUser, 'items')
       ]);
+
+      // 2. Perform intelligent merge
+      const finalCustomers = mergeData(currentLocalCustomers, remoteCustomers || [], true);
+      const finalItems = mergeData(currentLocalItems, remoteItems || []);
+
+      // 3. Update local React state and Storage with the merged truth
+      setCustomers(finalCustomers);
+      setItems(finalItems);
+      localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(finalCustomers));
+      localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(finalItems));
+
+      // 4. Save merged state back to cloud
+      await Promise.all([
+        cloudSave(currentUser, 'customers', finalCustomers),
+        cloudSave(currentUser, 'items', finalItems)
+      ]);
+
       setLastSynced(new Date().toLocaleTimeString());
-      triggerManualCheck(); // Refresh session security status
+      triggerManualCheck();
     } catch (e) {
-      console.warn("Cloud sync failed. Data is safe locally and will sync on next action.");
+      console.warn("Real-time merge failed. Using local fallback.", e);
+      // Fallback: update local storage at least
+      localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(currentLocalCustomers));
+      localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(currentLocalItems));
     } finally {
       setIsSyncing(false);
     }
@@ -148,24 +192,13 @@ const App: React.FC = () => {
   // Data Management: Export/Import
   const handleExport = () => {
     if (!currentUser) return;
-
-    // Sanitize username: allow only letters, numbers, and underscores for the filename
     const sanitizedUsername = currentUser.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const dateStr = new Date().toISOString().split('T')[0];
-
-    const data = {
-      customers,
-      items,
-      version: '4.5',
-      exportDate: new Date().toISOString(),
-      owner: currentUser
-    };
-    
+    const data = { customers, items, version: '4.6', exportDate: new Date().toISOString(), owner: currentUser };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    // New naming convention: [Username]_backup_YYYY-MM-DD.json
     a.download = `${sanitizedUsername}_backup_${dateStr}.json`;
     a.click();
     URL.revokeObjectURL(url);
@@ -174,30 +207,23 @@ const App: React.FC = () => {
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         const content = e.target?.result as string;
         const data = JSON.parse(content);
-
         if (data.customers && Array.isArray(data.customers)) {
-          if (confirm("Restore from backup? This will replace your current device data and update the cloud sync.")) {
-            setCustomers(data.customers);
-            setItems(data.items || []);
-            // Sync the imported data to cloud and local storage
+          if (confirm("Restore from backup? This will merge with cloud data.")) {
             await syncData(data.customers, data.items || []);
-            alert("Backup restored successfully and synced to cloud.");
+            alert("Backup merged and restored successfully.");
           }
-        } else {
-          alert("Invalid backup file format. Could not find transaction data.");
         }
       } catch (err) {
-        alert("Error reading backup file. Please ensure it's a valid JSON file.");
+        alert("Error reading backup file.");
       }
     };
     reader.readAsText(file);
-    event.target.value = ''; // Reset input
+    event.target.value = '';
   };
 
   // Customer Management Actions
@@ -301,7 +327,7 @@ const App: React.FC = () => {
                </span>
             </div>
             <div className="text-[9px] font-bold text-slate-400">
-              {isSyncing ? 'SYNCING...' : lastSynced ? `LAST SYNC: ${lastSynced}` : 'READY'}
+              {isSyncing ? 'SYNCING...' : lastSynced ? `LATEST: ${lastSynced}` : 'READY'}
             </div>
           </div>
 
