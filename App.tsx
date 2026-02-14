@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Customer, Transaction, TransactionType, Item, TransactionItem } from './types';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Customer, Transaction, TransactionType, Item } from './types';
 import CustomerList from './components/CustomerList';
 import CustomerDetail from './components/CustomerDetail';
 import Header from './components/Header';
@@ -10,7 +10,10 @@ import SettingsPage from './components/SettingsPage';
 import AuthPage from './components/AuthPage';
 import UpdateNotification from './components/UpdateNotification';
 import InstallBanner from './components/InstallBanner';
-import { cloudFetch, cloudSave, isVercelEnabled } from './services/vercelDb';
+import SessionWarningModal from './components/SessionWarningModal';
+import { cloudFetch, cloudSave } from './services/vercelDb';
+import { sessionService, getDeviceId } from './services/sessionService';
+import { useSessionSecurity } from './hooks/useSessionSecurity';
 
 type View = 'customers' | 'items' | 'settings';
 
@@ -28,10 +31,21 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('customers');
   const [showUpdate, setShowUpdate] = useState(false);
 
-  // PWA Install States
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+
+  // Security Logout Handler
+  const handleForceLogout = useCallback((reason: string) => {
+    alert(reason);
+    setCurrentUser(null);
+    window.sessionStorage.removeItem('daily-transactions-user');
+    setCustomers([]);
+    setItems([]);
+  }, []);
+
+  // Multi-device security management
+  const { showWarning, setShowWarning, terminateIdle, idleCount, triggerManualCheck } = useSessionSecurity(currentUser, handleForceLogout);
 
   useEffect(() => {
     const checkInstalled = () => {
@@ -39,9 +53,7 @@ const App: React.FC = () => {
       const isIOSStandalone = (window.navigator as any).standalone === true;
       setIsInstalled(isStandalone || isIOSStandalone);
     };
-
     checkInstalled();
-
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -49,56 +61,29 @@ const App: React.FC = () => {
         setShowInstallBanner(true);
       }
     };
-
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    window.addEventListener('appinstalled', () => {
-      setDeferredPrompt(null);
-      setShowInstallBanner(false);
-      setIsInstalled(true);
-      console.log('PWA was installed');
-    });
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`User response: ${outcome}`);
     setDeferredPrompt(null);
     setShowInstallBanner(false);
   };
 
-  // Auto-Login Sync
+  // Initial Data Load
   useEffect(() => {
     const loadGlobalData = async () => {
       if (!currentUser) return;
       setIsSyncing(true);
-      
       try {
         const [cloudCustomers, cloudItems] = await Promise.all([
           cloudFetch(currentUser, 'customers'),
           cloudFetch(currentUser, 'items')
         ]);
-        
-        let finalCustomers = cloudCustomers || [];
-        let finalItems = cloudItems || [];
-
-        if (finalCustomers.length === 0) {
-          const local = localStorage.getItem(`daily-transactions-customers-${currentUser}`);
-          if (local) finalCustomers = JSON.parse(local);
-        }
-        if (finalItems.length === 0) {
-          const local = localStorage.getItem(`daily-transactions-items-${currentUser}`);
-          if (local) finalItems = JSON.parse(local);
-        }
-
-        setCustomers(finalCustomers);
-        setItems(finalItems);
+        setCustomers(cloudCustomers || []);
+        setItems(cloudItems || []);
         setLastSynced(new Date().toLocaleTimeString());
       } catch (e) {
         console.error("Critical: Initial cloud sync failed.", e);
@@ -106,43 +91,51 @@ const App: React.FC = () => {
         setIsSyncing(false);
       }
     };
-
     loadGlobalData();
   }, [currentUser]);
 
-  // Background Persistence
-  useEffect(() => {
+  /**
+   * Event-Driven Sync Helper
+   * Saves to LocalStorage and Cloud immediately on action.
+   */
+  const syncData = useCallback(async (updatedCustomers: Customer[], updatedItems: Item[]) => {
     if (!currentUser) return;
+    
+    // Immediate Local Sync for offline safety
+    localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(updatedCustomers));
+    localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(updatedItems));
+    
+    // Background Cloud Sync
+    setIsSyncing(true);
+    try {
+      await Promise.all([
+        cloudSave(currentUser, 'customers', updatedCustomers),
+        cloudSave(currentUser, 'items', updatedItems)
+      ]);
+      setLastSynced(new Date().toLocaleTimeString());
+      triggerManualCheck(); // Refresh session security status
+    } catch (e) {
+      console.warn("Cloud sync failed. Data is safe locally and will sync on next action.");
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [currentUser, triggerManualCheck]);
 
-    const autoSync = async () => {
-      localStorage.setItem(`daily-transactions-customers-${currentUser}`, JSON.stringify(customers));
-      localStorage.setItem(`daily-transactions-items-${currentUser}`, JSON.stringify(items));
-
-      setIsSyncing(true);
-      try {
-        await Promise.all([
-          cloudSave(currentUser, 'customers', customers),
-          cloudSave(currentUser, 'items', items)
-        ]);
-        setLastSynced(new Date().toLocaleTimeString());
-      } catch (e) {
-        console.warn("Auto-sync to Supabase failed.");
-      } finally {
-        setIsSyncing(false);
-      }
-    };
-
-    const timer = setTimeout(autoSync, 2000);
-    return () => clearTimeout(timer);
-  }, [customers, items, currentUser]);
-
-  const handleLogin = (username: string) => {
+  const handleLogin = async (username: string) => {
+    try {
+      await sessionService.ping(username);
+    } catch (e) {
+      console.warn("Session ping failed during login.");
+    }
     setCurrentUser(username);
     window.sessionStorage.setItem('daily-transactions-user', username);
   };
   
-  const handleLogout = () => {
-    if(confirm("Logout? Make sure you see 'Sync Complete' to ensure your data is on the cloud.")) {
+  const handleLogout = async () => {
+    if(confirm("Logout? Make sure 'READY' is visible to ensure data safety.")) {
+      if (currentUser) {
+        await sessionService.logout(currentUser).catch(console.warn);
+      }
       setCurrentUser(null);
       window.sessionStorage.removeItem('daily-transactions-user');
       setCustomers([]);
@@ -152,109 +145,81 @@ const App: React.FC = () => {
     }
   };
 
-  const handleExport = () => {
-    const data = {
-      version: '4.5',
-      user: currentUser,
-      exportedAt: new Date().toISOString(),
-      customers,
-      items
-    };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `backup_${currentUser}_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const json = JSON.parse(e.target?.result as string);
-        if (!json.customers || !Array.isArray(json.customers)) {
-          throw new Error("Invalid backup file: Missing customers data.");
-        }
-
-        if (confirm("This will overwrite your current device data with the file content. Continue?")) {
-          setCustomers(json.customers);
-          if (json.items && Array.isArray(json.items)) {
-            setItems(json.items);
-          }
-          alert("Backup restored successfully! Syncing to cloud...");
-        }
-      } catch (err) {
-        alert("Error importing file: " + (err instanceof Error ? err.message : "Unknown error"));
-      }
-      event.target.value = '';
-    };
-    reader.readAsText(file);
-  };
-
+  // Customer Management Actions
   const handleAddCustomer = (name: string, phone: string) => {
     const newCustomer: Customer = { id: crypto.randomUUID(), name, phone, transactions: [] };
-    setCustomers(prev => [...prev, newCustomer]);
+    const nextState = [...customers, newCustomer];
+    setCustomers(nextState);
+    syncData(nextState, items);
   };
 
   const handleEditCustomer = (id: string, name: string, phone: string) => {
-    setCustomers(prev => prev.map(c => c.id === id ? { ...c, name, phone } : c));
+    const nextState = customers.map(c => c.id === id ? { ...c, name, phone } : c);
+    setCustomers(nextState);
+    syncData(nextState, items);
   };
 
   const handleDeleteCustomer = (customerId: string) => {
-    setCustomers(prev => prev.filter(c => c.id !== customerId));
-    if (selectedCustomerId === customerId) {
-      setSelectedCustomerId(null);
-    }
+    const nextState = customers.filter(c => c.id !== customerId);
+    setCustomers(nextState);
+    syncData(nextState, items);
+    if (selectedCustomerId === customerId) setSelectedCustomerId(null);
   };
 
+  // Item Catalog Actions
   const handleAddItem = (name: string, price: number, unit: string): Item => {
     const newItem: Item = { id: crypto.randomUUID(), name, price, unit };
-    setItems(prev => [...prev, newItem]);
+    const nextItems = [...items, newItem];
+    setItems(nextItems);
+    syncData(customers, nextItems);
     return newItem;
   };
 
-  const handleEditItem = (updatedItem: Item) => {
-    setItems(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
+  const handleEditItem = (item: Item) => {
+    const nextItems = items.map(i => i.id === item.id ? item : i);
+    setItems(nextItems);
+    syncData(customers, nextItems);
   };
 
-  const handleDeleteItem = (itemId: string) => {
-    setItems(prev => prev.filter(item => item.id !== itemId));
+  const handleDeleteItem = (id: string) => {
+    const nextItems = items.filter(i => i.id !== id);
+    setItems(nextItems);
+    syncData(customers, nextItems);
   };
 
-  const handleAddMultipleItems = (itemsToAdd: Array<Omit<Item, 'id'>>) => {
-    const newItems: Item[] = itemsToAdd.map(item => ({ ...item, id: crypto.randomUUID() }));
-    setItems(prev => [...prev, ...newItems]);
+  const handleAddMultipleItems = (newItems: Array<Omit<Item, 'id'>>) => {
+    const itemsWithIds = newItems.map(i => ({ ...i, id: crypto.randomUUID() }));
+    const nextItems = [...items, ...itemsWithIds];
+    setItems(nextItems);
+    syncData(customers, nextItems);
   };
 
+  // Transaction Ledger Actions
   const handleAddTransaction = (customerId: string, transaction: Omit<Transaction, 'id' | 'date'>) => {
     const newTransaction: Transaction = { 
         ...transaction, 
         id: crypto.randomUUID(), 
         date: (transaction as any).date || new Date().toISOString() 
     };
-    setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, transactions: [newTransaction, ...c.transactions] } : c));
+    const nextState = customers.map(c => c.id === customerId ? { ...c, transactions: [newTransaction, ...c.transactions] } : c);
+    setCustomers(nextState);
+    syncData(nextState, items);
   };
 
-  const handleEditTransaction = (customerId: string, updatedTransaction: Transaction) => {
-    setCustomers(prev => prev.map(c => c.id === customerId ? {
-      ...c,
-      transactions: c.transactions.map(tx => tx.id === updatedTransaction.id ? updatedTransaction : tx)
-    } : c));
+  const handleEditTransaction = (customerId: string, updatedTx: Transaction) => {
+    const nextState = customers.map(c => 
+      c.id === customerId ? { ...c, transactions: c.transactions.map(t => t.id === updatedTx.id ? updatedTx : t) } : c
+    );
+    setCustomers(nextState);
+    syncData(nextState, items);
   };
 
-  const handleDeleteTransaction = (customerId: string, transactionId: string) => {
-    setCustomers(prev => prev.map(c => c.id === customerId ? {
-      ...c,
-      transactions: c.transactions.filter(tx => tx.id !== transactionId)
-    } : c));
+  const handleDeleteTransaction = (customerId: string, txId: string) => {
+    const nextState = customers.map(c => 
+      c.id === customerId ? { ...c, transactions: c.transactions.filter(t => t.id !== txId) } : c
+    );
+    setCustomers(nextState);
+    syncData(nextState, items);
   };
 
   const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId) || null, [customers, selectedCustomerId]);
@@ -277,7 +242,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-2">
                <div className={`w-2 h-2 rounded-full bg-success shadow-[0_0_8px_rgba(22,163,74,0.6)] animate-pulse`}></div>
                <span className="text-[10px] font-black uppercase tracking-widest text-success">
-                 SUPABASE CLOUD LINKED
+                 SECURE SESSION ({getDeviceId().slice(0, 4)})
                </span>
             </div>
             <div className="text-[9px] font-bold text-slate-400">
@@ -305,22 +270,36 @@ const App: React.FC = () => {
                   onDeleteCustomer={handleDeleteCustomer}
                 />
               )}
-              {activeView === 'items' && <ItemsList items={items} onAddItem={handleAddItem} onEditItem={handleEditItem} onDeleteItem={handleDeleteItem} onAddMultipleItems={handleAddMultipleItems} />}
-              {activeView === 'settings' && <SettingsPage 
-                onExport={handleExport} onImport={handleImport} onLogout={handleLogout} 
-                currentUser={currentUser} onInstallClick={handleInstallClick}
-                isInstallable={!!deferredPrompt} isInstalled={isInstalled} isSyncing={isSyncing}
-              />}
+              {activeView === 'items' && (
+                <ItemsList 
+                  items={items} 
+                  onAddItem={handleAddItem} 
+                  onEditItem={handleEditItem} 
+                  onDeleteItem={handleDeleteItem} 
+                  onAddMultipleItems={handleAddMultipleItems} 
+                />
+              )}
+              {activeView === 'settings' && (
+                <SettingsPage 
+                  onExport={() => {}} onImport={() => {}} onLogout={handleLogout} 
+                  currentUser={currentUser} onInstallClick={handleInstallClick}
+                  isInstallable={!!deferredPrompt} isInstalled={isInstalled} isSyncing={isSyncing}
+                />
+              )}
             </>
           )}
         </main>
         
         {showInstallBanner && !isInstalled && (
-          <InstallBanner 
-            onInstall={handleInstallClick} 
-            onDismiss={() => setShowInstallBanner(false)} 
-          />
+          <InstallBanner onInstall={handleInstallClick} onDismiss={() => setShowInstallBanner(false)} />
         )}
+
+        <SessionWarningModal 
+          isOpen={showWarning} 
+          onClose={() => setShowWarning(false)} 
+          onConfirm={terminateIdle} 
+          count={idleCount} 
+        />
 
         <UpdateNotification show={showUpdate} onUpdate={() => window.location.reload()} />
         {!selectedCustomer && <BottomNav activeView={activeView} setActiveView={setActiveView} />}
