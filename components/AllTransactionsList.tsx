@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Customer, TransactionType } from '../types';
-import { formatCurrency } from '../utils/helpers';
+import { formatCurrency, formatDateTime } from '../utils/helpers';
 import { SearchIcon } from './icons/SearchIcon';
 import { SortIcon } from './icons/SortIcon';
 
@@ -65,14 +65,6 @@ const AllTransactionsList: React.FC<AllTransactionsListProps> = ({ customers, on
         }
       });
   }, [allTransactions, searchTerm, startDate, endDate, filterType, sortOrder]);
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
 
   if (allTransactions.length === 0) {
     return (
@@ -202,7 +194,7 @@ const AllTransactionsList: React.FC<AllTransactionsListProps> = ({ customers, on
                 <p className="text-sm text-slate-600">
                   {tx.items.length > 0 ? `${tx.items.length} item(s)` : tx.description || 'Transaction'}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">{formatDate(tx.date)}</p>
+                <p className="text-xs text-slate-400 mt-1 font-medium">{formatDateTime(tx.date)}</p>
               </div>
               <p className={`font-bold text-lg ${tx.type === TransactionType.GAVE ? 'text-danger' : 'text-success'}`}>
                 {tx.type === TransactionType.GAVE ? '-' : '+'} {formatCurrency(tx.amount)}

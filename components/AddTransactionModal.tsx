@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Transaction, TransactionType, Item, TransactionItem } from '../types';
-import { formatCurrency } from '../utils/helpers';
+import { formatCurrency, getLocalDateTimeString } from '../utils/helpers';
 import { PlusIcon } from './icons/PlusIcon';
 import { CubeIcon } from './icons/CubeIcon';
 import { CashIcon } from './icons/CashIcon';
@@ -33,7 +33,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [selectedItems, setSelectedItems] = useState<TransactionItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string>('');
   const [cashAmount, setCashAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dateTime, setDateTime] = useState(getLocalDateTimeString());
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
   
   const totalAmount = useMemo(() => {
@@ -47,7 +47,9 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     if (isOpen) {
       if (transactionToEdit) {
         setDescription(transactionToEdit.description || '');
-        setDate(transactionToEdit.date.split('T')[0]);
+        // Convert ISO to local datetime-local format
+        setDateTime(getLocalDateTimeString(new Date(transactionToEdit.date)));
+        
         if (transactionToEdit.items && transactionToEdit.items.length > 0) {
           setMode('items');
           setSelectedItems(transactionToEdit.items);
@@ -63,7 +65,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         setSelectedItemId('');
         setCashAmount('');
         setMode('items');
-        setDate(new Date().toISOString().split('T')[0]);
+        setDateTime(getLocalDateTimeString());
       }
     }
   }, [isOpen, transactionToEdit]);
@@ -134,7 +136,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (totalAmount > 0) {
-      const txDate = new Date(date).toISOString();
+      const finalDate = new Date(dateTime).toISOString();
       if (transactionToEdit && onEditTransaction) {
         onEditTransaction({
           ...transactionToEdit,
@@ -142,7 +144,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           description: description.trim(),
           type: transactionType,
           items: mode === 'items' ? selectedItems : [],
-          date: txDate,
+          date: finalDate,
         });
       } else {
         onAddTransaction({
@@ -150,6 +152,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           description: description.trim(),
           type: transactionType,
           items: mode === 'items' ? selectedItems : [],
+          date: finalDate
         } as any); 
       }
       onClose();
@@ -212,13 +215,13 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             <div className="grid grid-cols-1 xs:grid-cols-2 gap-4 items-start">
               <div className="space-y-1.5">
                 <label htmlFor="tx-date" className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                  Date
+                  Date & Time
                 </label>
                 <input
                   id="tx-date"
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  type="datetime-local"
+                  value={dateTime}
+                  onChange={(e) => setDateTime(e.target.value)}
                   className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-[11px] font-bold text-slate-700 appearance-none"
                   required
                 />
